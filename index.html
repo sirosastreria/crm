@@ -15,11 +15,10 @@
     --teal-dark: #1F5049;
     --amber: #E1962F;
     --amber-dark: #C97D1D;
-    --st-nuevo: #8A97A8;
-    --st-contactado: #E1962F;
-    --st-cita: #2A6F63;
-    --st-cliente: #4C8C4A;
-    --st-no: #B5504A;
+    --st-pendiente: #8A97A8;
+    --st-no-atendio: #B5504A;
+    --st-no-compro: #C97D1D;
+    --st-compro: #4C8C4A;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -76,7 +75,7 @@
     background:var(--card);
     border-radius:14px;
     border:1px solid var(--line);
-    border-left:5px solid var(--st-nuevo);
+    border-left:5px solid var(--st-pendiente);
     padding:14px 14px 12px;
     margin-bottom:10px;
     display:flex; flex-direction:column; gap:4px;
@@ -130,7 +129,7 @@
   .btn-primary:active{ background:var(--teal-dark); }
   .btn-amber{ background:var(--amber); color:#fff; }
   .btn-amber:active{ background:var(--amber-dark); }
-  .btn-outline{ background:transparent; color:var(--st-no); border:1.5px solid var(--st-no); }
+  .btn-outline{ background:transparent; color:var(--st-no-atendio); border:1.5px solid var(--st-no-atendio); }
   .btn-ghost{ background:transparent; color:var(--ink-soft); border:1.5px solid var(--line); }
 
   .overlay{
@@ -177,6 +176,26 @@
     background:#EFF6F4; border:1px solid #CFE4DF; border-radius:12px; padding:12px; margin-top:10px;
   }
   .loading{ text-align:center; padding:40px; color:var(--ink-soft); }
+
+  #loadingOverlay{
+    position:fixed; inset:0; z-index:100;
+    background:rgba(43,39,35,0.35);
+    display:none;
+    align-items:center; justify-content:center;
+  }
+  #loadingOverlay.show{ display:flex; }
+  .spinner-box{
+    background:var(--card); border-radius:14px; padding:22px 28px;
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18);
+  }
+  .spinner{
+    width:34px; height:34px; border-radius:50%;
+    border:4px solid var(--line); border-top-color:var(--teal);
+    animation:spin 0.7s linear infinite;
+  }
+  .spinner-box span{ font-size:13.5px; font-weight:700; color:var(--ink-soft); }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -246,17 +265,23 @@
 
 <div class="toast" id="toast"></div>
 
+<div id="loadingOverlay">
+  <div class="spinner-box">
+    <div class="spinner"></div>
+    <span>Un momento...</span>
+  </div>
+</div>
+
 <script>
 /* ============ CONFIGURA ESTA LÍNEA ============ */
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-IUnnJN1BHCT1uv6X7lLX5QGPz6IjuqrtamQH2c1nITL4lYL_yCtj9gsoDOwXAhOWSw/exec';
 /* ================================================ */
 
 const STATUS_COLORS = {
-  'Nuevo': 'var(--st-nuevo)',
-  'Contactado': 'var(--st-contactado)',
-  'Cita Agendada': 'var(--st-cita)',
-  'Cliente': 'var(--st-cliente)',
-  'No interesado': 'var(--st-no)'
+  'Pendiente': 'var(--st-pendiente)',
+  'No atendió': 'var(--st-no-atendio)',
+  'No compró': 'var(--st-no-compro)',
+  'Compró': 'var(--st-compro)'
 };
 let STATUSES = Object.keys(STATUS_COLORS);
 let TEAM = [];
@@ -272,16 +297,28 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
+let pendingRequests = 0;
+function showLoading(){
+  pendingRequests++;
+  document.getElementById('loadingOverlay').classList.add('show');
+}
+function hideLoading(){
+  pendingRequests = Math.max(0, pendingRequests - 1);
+  if(pendingRequests === 0) document.getElementById('loadingOverlay').classList.remove('show');
+}
+
 function apiGet(params){
   const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-  return fetch(APPS_SCRIPT_URL + qs).then(r=>r.json());
+  showLoading();
+  return fetch(APPS_SCRIPT_URL + qs).then(r=>r.json()).finally(hideLoading);
 }
 function apiPost(body){
+  showLoading();
   return fetch(APPS_SCRIPT_URL, {
     method:'POST',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify(body)
-  }).then(r=>r.json());
+  }).then(r=>r.json()).finally(hideLoading);
 }
 
 function openOverlay(id){ document.getElementById(id).classList.add('open'); }
@@ -327,7 +364,7 @@ function renderList(){
     return;
   }
   main.innerHTML = list.map(c=>{
-    const color = STATUS_COLORS[c['Estatus']] || 'var(--st-nuevo)';
+    const color = STATUS_COLORS[c['Estatus']] || 'var(--st-pendiente)';
     const cita = c['Fecha Cita'] ? `<div class="cita">📅 ${c['Fecha Cita']} ${c['Hora Cita']||''}${c['Sucursal'] ? ' · ' + escapeHtml(c['Sucursal']) : ''}</div>` : '';
     return `
     <div class="card" style="border-left-color:${color}" data-id="${c['ID']}">
@@ -336,7 +373,7 @@ function renderList(){
           <div class="name">${escapeHtml(c['Nombre'])} ${escapeHtml(c['Apellido Paterno']||'')}</div>
           <div class="phone">📞 ${escapeHtml(c['Teléfono']||'—')}</div>
         </div>
-        <span class="pill" style="background:${color}">${c['Estatus']}</span>
+        <span class="pill" style="background:${color}">${c['Estatus'] || 'Pendiente'}</span>
       </div>
       <div class="meta">${escapeHtml(c['Fuente']||'')}${c['Agregado por'] ? ' · ' + escapeHtml(c['Agregado por']) : ''}</div>
       ${cita}
@@ -485,7 +522,10 @@ function openDetail(id){
     if(!date || !time){ toast('Elige fecha y hora'); return; }
     if(!sucursal){ toast('Elige una sucursal'); return; }
     apiPost({action:'schedule', id, date, time, duration:30, sucursal}).then(res=>{
-      if(res.ok){ toast('Llamada agendada en el calendario ✅'); loadContacts(); openDetail(id); }
+      if(res.ok){
+        toast(res.data.invitoCorreo ? 'Llamada agendada e invitación enviada ✅' : 'Llamada agendada ✅ (sin correo para invitar)');
+        loadContacts(); openDetail(id);
+      }
       else toast('Error: '+res.error);
     });
   });
