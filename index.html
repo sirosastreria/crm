@@ -196,11 +196,9 @@
   <div class="loading">Cargando contactos...</div>
 </main>
 
-<button class="fab" id="fabAdd">＋ Nuevo contacto</button>
-
 <footer class="nav">
   <button class="nav-btn active" data-tab="lista"><span class="ic">📋</span>Contactos</button>
-  <button class="nav-btn" data-tab="nuevo"><span class="ic">➕</span>Alta rápida</button>
+  <button class="nav-btn" data-tab="nuevo"><span class="ic">➕</span>Nuevo contacto</button>
 </footer>
 
 <!-- OVERLAY: Nuevo contacto -->
@@ -262,6 +260,7 @@ const STATUS_COLORS = {
 };
 let STATUSES = Object.keys(STATUS_COLORS);
 let TEAM = [];
+let SUCURSALES = [];
 let CONTACTS = [];
 let activeStatusFilter = 'Todos';
 let currentDetailId = null;
@@ -298,8 +297,6 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     if(btn.dataset.tab === 'nuevo'){ openOverlay('overlayNuevo'); }
   });
 });
-document.getElementById('fabAdd').addEventListener('click', ()=>openOverlay('overlayNuevo'));
-
 function renderChips(){
   const wrap = document.getElementById('statusChips');
   const opts = ['Todos', ...STATUSES];
@@ -331,7 +328,7 @@ function renderList(){
   }
   main.innerHTML = list.map(c=>{
     const color = STATUS_COLORS[c['Estatus']] || 'var(--st-nuevo)';
-    const cita = c['Fecha Cita'] ? `<div class="cita">📅 Cita: ${c['Fecha Cita']} ${c['Hora Cita']||''}</div>` : '';
+    const cita = c['Fecha Cita'] ? `<div class="cita">📅 ${c['Fecha Cita']} ${c['Hora Cita']||''}${c['Sucursal'] ? ' · ' + escapeHtml(c['Sucursal']) : ''}</div>` : '';
     return `
     <div class="card" style="border-left-color:${color}" data-id="${c['ID']}">
       <div class="row-top">
@@ -375,6 +372,7 @@ function loadTeamAndStatuses(){
     if(res.ok){
       TEAM = res.data.team || [];
       if(res.data.statuses && res.data.statuses.length) STATUSES = res.data.statuses;
+      SUCURSALES = res.data.sucursales || [];
       const sel = document.getElementById('f_quien');
       sel.innerHTML = TEAM.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
       renderChips();
@@ -427,9 +425,15 @@ function openDetail(id){
     ? `<div class="cita-box">
          <div class="info-line"><span>Fecha</span><span>${escapeHtml(c['Fecha Cita'])}</span></div>
          <div class="info-line"><span>Hora</span><span>${escapeHtml(c['Hora Cita'])}</span></div>
+         <div class="info-line"><span>Sucursal</span><span>${escapeHtml(c['Sucursal']||'—')}</span></div>
          <div style="margin-top:10px;"><button class="btn btn-outline" id="btnCancelarCita">Cancelar cita</button></div>
        </div>`
     : '';
+
+  const sucursalOptions = SUCURSALES.map(s=>{
+    const sel = s === c['Sucursal'] ? 'selected' : '';
+    return `<option value="${escapeHtml(s)}" ${sel}>${escapeHtml(s)}</option>`;
+  }).join('');
 
   document.getElementById('det_body').innerHTML = `
     <div class="info-line"><span>Teléfono</span><span>${escapeHtml(c['Teléfono']||'—')}</span></div>
@@ -446,9 +450,13 @@ function openDetail(id){
 
     <div class="section-label">Llamada</div>
     ${citaBox}
-    <div class="two-col" style="margin-top:${c['Fecha Cita']?'14px':'0'}">
-      <div class="field"><label>Fecha</label><input type="date" id="det_fecha"></div>
-      <div class="field"><label>Hora</label><input type="time" id="det_hora"></div>
+    <div class="field" style="margin-top:${c['Fecha Cita']?'14px':'0'}"><label>Fecha</label><input type="date" id="det_fecha"></div>
+    <div class="field" style="margin-top:12px"><label>Hora</label><input type="time" id="det_hora"></div>
+    <div class="field" style="margin-top:12px"><label>Sucursal</label>
+      <select id="det_sucursal">
+        <option value="">Selecciona una sucursal</option>
+        ${sucursalOptions}
+      </select>
     </div>
     <div style="margin-top:10px;"><button class="btn btn-amber" id="btnAgendar">${c['Fecha Cita']?'Reagendar llamada':'Agendar llamada'}</button></div>
   `;
@@ -473,8 +481,10 @@ function openDetail(id){
   document.getElementById('btnAgendar').addEventListener('click', ()=>{
     const date = document.getElementById('det_fecha').value;
     const time = document.getElementById('det_hora').value;
+    const sucursal = document.getElementById('det_sucursal').value;
     if(!date || !time){ toast('Elige fecha y hora'); return; }
-    apiPost({action:'schedule', id, date, time, duration:30}).then(res=>{
+    if(!sucursal){ toast('Elige una sucursal'); return; }
+    apiPost({action:'schedule', id, date, time, duration:30, sucursal}).then(res=>{
       if(res.ok){ toast('Llamada agendada en el calendario ✅'); loadContacts(); openDetail(id); }
       else toast('Error: '+res.error);
     });
