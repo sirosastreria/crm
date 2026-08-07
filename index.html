@@ -1,252 +1,564 @@
-/**
- * BITÁCORA DE CONTACTOS — Backend (Google Apps Script)
- * ------------------------------------------------------
- * Este código va DENTRO del Google Sheet que usarás como base de datos.
- * Ver GUIA_INSTALACION.md para el paso a paso de instalación.
- */
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Bitácora de Contactos</title>
+<style>
+  :root{
+    --paper: #FAF6EE;
+    --card: #FFFFFF;
+    --ink: #2B2723;
+    --ink-soft: #6E655B;
+    --line: #E7DFD2;
+    --teal: #2A6F63;
+    --teal-dark: #1F5049;
+    --amber: #E1962F;
+    --amber-dark: #C97D1D;
+    --st-pendiente: #8A97A8;
+    --st-no-atendio: #B5504A;
+    --st-no-compro: #C97D1D;
+    --st-compro: #4C8C4A;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding-bottom:84px;
+  }
+  header.top{
+    position:sticky; top:0; z-index:20;
+    background:var(--paper);
+    padding:18px 16px 10px;
+    border-bottom:1px solid var(--line);
+  }
+  .brand{
+    display:flex; align-items:baseline; gap:8px;
+  }
+  .brand h1{
+    font-size:20px; margin:0; letter-spacing:-0.01em; font-weight:800;
+  }
+  .brand .tag{
+    font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-soft);
+    font-weight:600;
+  }
+  .searchbar{
+    margin-top:12px; display:flex; gap:8px;
+  }
+  .searchbar input[type="search"]{
+    flex:1; padding:11px 14px; border-radius:10px; border:1px solid var(--line);
+    font-size:15px; background:var(--card); color:var(--ink);
+  }
+  .chips{
+    display:flex; gap:6px; overflow-x:auto; margin-top:10px; padding-bottom:4px;
+    scrollbar-width:none;
+  }
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex:0 0 auto; padding:6px 12px; border-radius:999px; font-size:12.5px; font-weight:700;
+    border:1.5px solid var(--line); background:var(--card); color:var(--ink-soft); white-space:nowrap;
+  }
+  .chip.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
 
-// ====== CONFIGURACIÓN — EDITA ESTAS LÍNEAS ======
-const CALENDAR_ID = '9cd3d4a22c13eae08571a47331c26e329c50b6cce89de79fca85a516cba6eec7@group.calendar.google.com';
-const TEAM = ['Edy', 'Miembro 1', 'Miembro 2']; // Nombres del equipo que usará la herramienta
+  main{ padding:14px 16px 8px; max-width:640px; margin:0 auto; }
 
-// Sucursales disponibles. El texto de cada una se usa como "ubicación" del evento en el Calendar.
-const SUCURSALES = {
-  'Ñuñoa': 'Sucursal Ñuñoa — https://maps.app.goo.gl/YTzPq7d4oZGqfsSk6',
-  'Galería Agustín Edwards': 'Galeria Agustin Edwards, Santiago, RM. Local #1069',
-  'Las Condes': 'Sucursal Las Condes — https://maps.app.goo.gl/XZfhhVbNPNT6fRt58'
+  .empty{
+    text-align:center; color:var(--ink-soft); padding:60px 20px; font-size:15px;
+  }
+  .empty strong{ display:block; color:var(--ink); font-size:17px; margin-bottom:6px; }
+
+  .card{
+    background:var(--card);
+    border-radius:14px;
+    border:1px solid var(--line);
+    border-left:5px solid var(--st-pendiente);
+    padding:14px 14px 12px;
+    margin-bottom:10px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .card .row-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .card .name{ font-weight:800; font-size:16px; }
+  .card .phone{ color:var(--ink-soft); font-size:13.5px; margin-top:1px; }
+  .pill{
+    font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em;
+    padding:4px 9px; border-radius:999px; color:#fff; white-space:nowrap;
+  }
+  .card .meta{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+  .card .cita{ font-size:12.5px; color:var(--teal-dark); font-weight:700; margin-top:2px; }
+
+  footer.nav{
+    position:fixed; bottom:0; left:0; right:0; z-index:30;
+    display:flex; background:var(--card); border-top:1px solid var(--line);
+    padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+    gap:8px;
+  }
+  .nav-btn{
+    flex:1; text-align:center; padding:10px 4px; border-radius:12px; border:none;
+    background:transparent; font-size:13px; font-weight:700; color:var(--ink-soft);
+  }
+  .nav-btn .ic{ display:block; font-size:20px; margin-bottom:2px; }
+  .nav-btn.active{ background:var(--paper); color:var(--teal-dark); }
+
+  .fab{
+    position:fixed; right:16px; bottom:88px; z-index:30;
+    background:var(--amber); color:#fff; border:none; border-radius:16px;
+    padding:14px 18px; font-weight:800; font-size:14px; box-shadow:0 6px 16px rgba(225,150,47,0.4);
+  }
+  .fab:active{ background:var(--amber-dark); }
+
+  form.stack{ display:flex; flex-direction:column; gap:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.03em; }
+  .field input, .field select, .field textarea{
+    width:100%; padding:12px 13px; border-radius:10px; border:1.5px solid var(--line);
+    font-size:15.5px; color:var(--ink); background:var(--card); font-family:inherit;
+  }
+  .field textarea{ resize:vertical; min-height:70px; }
+  .two-col{ display:flex; gap:10px; }
+  .two-col .field{ flex:1; }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding:14px 18px; border-radius:12px; border:none; font-weight:800; font-size:15.5px;
+    width:100%; cursor:pointer;
+  }
+  .btn-primary{ background:var(--teal); color:#fff; }
+  .btn-primary:active{ background:var(--teal-dark); }
+  .btn-amber{ background:var(--amber); color:#fff; }
+  .btn-amber:active{ background:var(--amber-dark); }
+  .btn-outline{ background:transparent; color:var(--st-no-atendio); border:1.5px solid var(--st-no-atendio); }
+  .btn-ghost{ background:transparent; color:var(--ink-soft); border:1.5px solid var(--line); }
+
+  .overlay{
+    position:fixed; inset:0; background:var(--paper); z-index:40;
+    display:flex; flex-direction:column; transform:translateY(100%);
+    transition:transform 0.22s ease;
+  }
+  .overlay.open{ transform:translateY(0); }
+  .overlay-head{
+    display:flex; align-items:center; gap:10px; padding:16px;
+    border-bottom:1px solid var(--line); background:var(--paper);
+  }
+  .overlay-head h2{ font-size:17px; margin:0; flex:1; }
+  .icon-btn{
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    width:38px; height:38px; font-size:18px; color:var(--ink);
+  }
+  .overlay-body{ padding:16px; overflow-y:auto; flex:1; }
+
+  .section-label{
+    font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;
+    color:var(--ink-soft); margin:18px 0 8px;
+  }
+  .status-grid{ display:flex; flex-wrap:wrap; gap:8px; }
+  .status-opt{
+    padding:9px 13px; border-radius:999px; font-size:13px; font-weight:700;
+    border:1.5px solid var(--line); background:var(--card); color:var(--ink-soft);
+  }
+  .status-opt.sel{ color:#fff; border-color:transparent; }
+
+  .info-line{ font-size:15px; padding:7px 0; border-bottom:1px dashed var(--line); display:flex; justify-content:space-between; gap:10px; }
+  .info-line span:first-child{ color:var(--ink-soft); font-size:13px; }
+  .info-line span:last-child{ font-weight:600; text-align:right; }
+
+  .toast{
+    position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:11px 18px; border-radius:12px;
+    font-size:14px; font-weight:600; z-index:60; opacity:0; transition:opacity 0.25s;
+    max-width:85vw; text-align:center;
+  }
+  .toast.show{ opacity:1; }
+
+  .cita-box{
+    background:#EFF6F4; border:1px solid #CFE4DF; border-radius:12px; padding:12px; margin-top:10px;
+  }
+  .loading{ text-align:center; padding:40px; color:var(--ink-soft); }
+
+  #loadingOverlay{
+    position:fixed; inset:0; z-index:100;
+    background:rgba(43,39,35,0.35);
+    display:none;
+    align-items:center; justify-content:center;
+  }
+  #loadingOverlay.show{ display:flex; }
+  .spinner-box{
+    background:var(--card); border-radius:14px; padding:22px 28px;
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18);
+  }
+  .spinner{
+    width:34px; height:34px; border-radius:50%;
+    border:4px solid var(--line); border-top-color:var(--teal);
+    animation:spin 0.7s linear infinite;
+  }
+  .spinner-box span{ font-size:13.5px; font-weight:700; color:var(--ink-soft); }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Bitácora</h1>
+    <span class="tag">de papel a digital</span>
+  </div>
+  <div id="listControls" class="searchbar">
+    <input type="search" id="searchInput" placeholder="Buscar por nombre o teléfono...">
+  </div>
+  <div id="statusChips" class="chips"></div>
+</header>
+
+<main id="mainList">
+  <div class="loading">Cargando contactos...</div>
+</main>
+
+<footer class="nav">
+  <button class="nav-btn active" data-tab="lista"><span class="ic">📋</span>Contactos</button>
+  <button class="nav-btn" data-tab="nuevo"><span class="ic">➕</span>Nuevo contacto</button>
+</footer>
+
+<!-- OVERLAY: Nuevo contacto -->
+<div class="overlay" id="overlayNuevo">
+  <div class="overlay-head">
+    <button class="icon-btn" data-close="overlayNuevo">←</button>
+    <h2>Nuevo contacto</h2>
+  </div>
+  <div class="overlay-body">
+    <form class="stack" id="formNuevo">
+      <div class="field"><label>Nombre</label><input type="text" id="f_nombre" required></div>
+      <div class="two-col">
+        <div class="field"><label>Apellido paterno</label><input type="text" id="f_apP"></div>
+        <div class="field"><label>Apellido materno</label><input type="text" id="f_apM"></div>
+      </div>
+      <div class="field"><label>Teléfono</label><input type="tel" id="f_tel" required placeholder="10 dígitos"></div>
+      <div class="field"><label>Correo (opcional)</label><input type="email" id="f_correo"></div>
+      <div class="field">
+        <label>Fuente</label>
+        <select id="f_fuente">
+          <option value="Visitó tienda">Visitó tienda</option>
+          <option value="Campaña Meta">Campaña Meta</option>
+          <option value="Referido">Referido</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
+      <div class="field"><label>Notas</label><textarea id="f_notas" placeholder="Cualquier detalle útil..."></textarea></div>
+      <div class="field">
+        <label>Registrado por</label>
+        <select id="f_quien"></select>
+      </div>
+      <button type="submit" class="btn btn-primary">Guardar contacto</button>
+    </form>
+  </div>
+</div>
+
+<!-- OVERLAY: Detalle de contacto -->
+<div class="overlay" id="overlayDetalle">
+  <div class="overlay-head">
+    <button class="icon-btn" data-close="overlayDetalle">←</button>
+    <h2 id="det_nombre">Contacto</h2>
+  </div>
+  <div class="overlay-body" id="det_body"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div id="loadingOverlay">
+  <div class="spinner-box">
+    <div class="spinner"></div>
+    <span>Un momento...</span>
+  </div>
+</div>
+
+<script>
+/* ============ CONFIGURA ESTA LÍNEA ============ */
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-IUnnJN1BHCT1uv6X7lLX5QGPz6IjuqrtamQH2c1nITL4lYL_yCtj9gsoDOwXAhOWSw/exec';
+/* ================================================ */
+
+const STATUS_COLORS = {
+  'Pendiente': 'var(--st-pendiente)',
+  'No atendió': 'var(--st-no-atendio)',
+  'No compró': 'var(--st-no-compro)',
+  'Compró': 'var(--st-compro)'
 };
+let STATUSES = Object.keys(STATUS_COLORS);
+let TEAM = [];
+let SUCURSALES = [];
+let CONTACTS = [];
+let activeStatusFilter = 'Todos';
+let currentDetailId = null;
 
-// Nota que se agrega automáticamente a TODAS las citas agendadas.
-const NOTA_CITA = 'Llega a tu cita al menos 15 minutos antes\nPara que la experiencia sea más cómoda, recomendamos venir con máximo 2 o 3 personas.\nCualquier duda escríbenos al +56 9 2382 7714';
-
-// Estatus disponibles para cada contacto (persona ya agendada).
-const ESTATUS_LIST = ['Pendiente', 'No atendió', 'No compró', 'Compró'];
-
-// Todas las citas se agendan y se muestran en esta zona horaria, sin importar
-// desde dónde se esté usando la app.
-const ZONA_HORARIA = 'America/Santiago';
-// Súbelo cada vez que cambies este archivo. Sirve para confirmar, desde el navegador,
-// que la implementación publicada ya tiene tus últimos cambios (abre la URL /exec?action=version).
-const VERSION = 'v3-2026-08-07';
-// ====================================================
-
-const SHEET_NAME = 'Contactos';
-const HEADERS = ['ID', 'Fecha Alta', 'Nombre', 'Apellido Paterno', 'Apellido Materno', 'Teléfono', 'Correo', 'Fuente', 'Notas', 'Estatus', 'Fecha Cita', 'Hora Cita', 'Sucursal', 'Calendar Event ID', 'Agregado por', 'Última actualización'];
-
-function getSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(HEADERS);
-    sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
-  }
-  ensureColumn(sheet, 'Sucursal'); // migración automática si el Sheet ya existía sin esta columna
-  return sheet;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
-function ensureColumn(sheet, name) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (headers.indexOf(name) === -1) {
-    sheet.getRange(1, headers.length + 1).setValue(name);
-  }
+let pendingRequests = 0;
+function showLoading(){
+  pendingRequests++;
+  document.getElementById('loadingOverlay').classList.add('show');
+}
+function hideLoading(){
+  pendingRequests = Math.max(0, pendingRequests - 1);
+  if(pendingRequests === 0) document.getElementById('loadingOverlay').classList.remove('show');
 }
 
-function jsonResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+function apiGet(params){
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  showLoading();
+  return fetch(APPS_SCRIPT_URL + qs).then(r=>r.json()).finally(hideLoading);
+}
+function apiPost(body){
+  showLoading();
+  return fetch(APPS_SCRIPT_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(body)
+  }).then(r=>r.json()).finally(hideLoading);
 }
 
-function doGet(e) {
-  try {
-    if (e.parameter.action === 'version') {
-      return jsonResponse({ ok: true, data: { version: VERSION, zona: ZONA_HORARIA } });
-    }
-    if (e.parameter.action === 'team') {
-      return jsonResponse({ ok: true, data: { team: TEAM, statuses: ESTATUS_LIST, sucursales: Object.keys(SUCURSALES) } });
-    }
-    return jsonResponse({ ok: true, data: listContacts() });
-  } catch (err) {
-    return jsonResponse({ ok: false, error: err.message });
-  }
-}
+function openOverlay(id){ document.getElementById(id).classList.add('open'); }
+function closeOverlay(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('[data-close]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(btn.dataset.close === 'overlayDetalle') closeDetailAndClearHash();
+    else closeOverlay(btn.dataset.close);
+  });
+});
 
-function doPost(e) {
-  let body;
-  try {
-    body = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return jsonResponse({ ok: false, error: 'No se pudo leer la solicitud.' });
-  }
-  try {
-    let result;
-    switch (body.action) {
-      case 'add': result = addContact(body.data); break;
-      case 'updateStatus': result = updateStatus(body.id, body.status); break;
-      case 'updateNotes': result = updateNotes(body.id, body.notas); break;
-      case 'schedule': result = scheduleCall(body.id, body.date, body.time, body.duration, body.sucursal); break;
-      case 'cancelSchedule': result = cancelSchedule(body.id); break;
-      default: return jsonResponse({ ok: false, error: 'Acción desconocida: ' + body.action });
-    }
-    return jsonResponse({ ok: true, data: result });
-  } catch (err) {
-    return jsonResponse({ ok: false, error: err.message });
-  }
-}
-
-function listContacts() {
-  const sheet = getSheet();
-  const range = sheet.getDataRange().getValues();
-  const headers = range[0];
-  const idIdx = headers.indexOf('ID');
-  const fechaAltaIdx = headers.indexOf('Fecha Alta');
-
-  const rows = range.slice(1).filter(function (row) { return row[idIdx]; });
-  rows.sort(function (a, b) { return new Date(b[fechaAltaIdx]) - new Date(a[fechaAltaIdx]); });
-
-  const tz = ZONA_HORARIA;
-  return rows.map(function (row) {
-    const obj = {};
-    headers.forEach(function (h, idx) {
-      let val = row[idx];
-      if (val instanceof Date) {
-        if (h === 'Fecha Cita') val = Utilities.formatDate(val, tz, 'd/M/yyyy');
-        else if (h === 'Hora Cita') val = Utilities.formatDate(val, tz, 'HH:mm');
-        else val = Utilities.formatDate(val, tz, 'd/M/yyyy HH:mm');
-      }
-      obj[h] = val;
+document.querySelectorAll('.nav-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    if(btn.dataset.tab === 'nuevo'){ openOverlay('overlayNuevo'); }
+  });
+});
+function renderChips(){
+  const wrap = document.getElementById('statusChips');
+  const opts = ['Todos', ...STATUSES];
+  wrap.innerHTML = opts.map(s=>
+    `<button class="chip ${s===activeStatusFilter?'active':''}" data-status="${s}">${s}</button>`
+  ).join('');
+  wrap.querySelectorAll('.chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      activeStatusFilter = chip.dataset.status;
+      renderChips();
+      renderList();
     });
-    return obj;
   });
 }
 
-function findRowById(sheet, id) {
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(id)) return i + 1;
+function renderList(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  let list = CONTACTS.filter(c=>{
+    const matchesStatus = activeStatusFilter==='Todos' || c['Estatus']===activeStatusFilter;
+    const full = (c['Nombre']+' '+c['Apellido Paterno']+' '+c['Apellido Materno']+' '+c['Teléfono']).toLowerCase();
+    const matchesQ = !q || full.includes(q);
+    return matchesStatus && matchesQ;
+  });
+
+  const main = document.getElementById('mainList');
+  if(list.length===0){
+    main.innerHTML = `<div class="empty"><strong>Nada por aquí todavía</strong>Agrega tu primer contacto con el botón de abajo.</div>`;
+    return;
   }
-  return -1;
+  main.innerHTML = list.map(c=>{
+    const color = STATUS_COLORS[c['Estatus']] || 'var(--st-pendiente)';
+    const cita = c['Fecha Cita'] ? `<div class="cita">📅 ${c['Fecha Cita']} ${c['Hora Cita']||''}${c['Sucursal'] ? ' · ' + escapeHtml(c['Sucursal']) : ''}</div>` : '';
+    return `
+    <div class="card" style="border-left-color:${color}" data-id="${c['ID']}">
+      <div class="row-top">
+        <div>
+          <div class="name">${escapeHtml(c['Nombre'])} ${escapeHtml(c['Apellido Paterno']||'')}</div>
+          <div class="phone">📞 ${escapeHtml(c['Teléfono']||'—')}</div>
+        </div>
+        <span class="pill" style="background:${color}">${c['Estatus'] || 'Pendiente'}</span>
+      </div>
+      <div class="meta">${escapeHtml(c['Fuente']||'')}${c['Agregado por'] ? ' · ' + escapeHtml(c['Agregado por']) : ''}</div>
+      ${cita}
+    </div>`;
+  }).join('');
+
+  main.querySelectorAll('.card').forEach(card=>{
+    card.addEventListener('click', ()=>openDetail(card.dataset.id));
+  });
 }
 
-function colIndex(headers, name) {
-  return headers.indexOf(name) + 1;
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function addContact(data) {
-  const sheet = getSheet();
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const id = 'C' + new Date().getTime();
-  const now = new Date();
-  const values = {
-    'ID': id,
-    'Fecha Alta': now,
-    'Nombre': data.nombre || '',
-    'Apellido Paterno': data.apellidoPaterno || '',
-    'Apellido Materno': data.apellidoMaterno || '',
-    'Teléfono': data.telefono || '',
-    'Correo': data.correo || '',
-    'Fuente': data.fuente || '',
-    'Notas': data.notas || '',
-    'Estatus': 'Pendiente',
-    'Fecha Cita': '',
-    'Hora Cita': '',
-    'Sucursal': '',
-    'Calendar Event ID': '',
-    'Agregado por': data.agregadoPor || '',
-    'Última actualización': now
+document.getElementById('searchInput').addEventListener('input', renderList);
+
+function loadContacts(){
+  return apiGet().then(res=>{
+    if(res.ok){
+      CONTACTS = res.data;
+      renderList();
+    } else {
+      document.getElementById('mainList').innerHTML = `<div class="empty">No se pudo cargar: ${escapeHtml(res.error||'')}</div>`;
+    }
+  }).catch(()=>{
+    document.getElementById('mainList').innerHTML = `<div class="empty">No se pudo conectar. Revisa tu internet.</div>`;
+  });
+}
+
+function loadTeamAndStatuses(){
+  return apiGet({action:'team'}).then(res=>{
+    if(res.ok){
+      TEAM = res.data.team || [];
+      if(res.data.statuses && res.data.statuses.length) STATUSES = res.data.statuses;
+      SUCURSALES = res.data.sucursales || [];
+      const sel = document.getElementById('f_quien');
+      sel.innerHTML = TEAM.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      renderChips();
+    }
+  });
+}
+
+// ---- Nuevo contacto ----
+document.getElementById('formNuevo').addEventListener('submit', e=>{
+  e.preventDefault();
+  const data = {
+    nombre: document.getElementById('f_nombre').value.trim(),
+    apellidoPaterno: document.getElementById('f_apP').value.trim(),
+    apellidoMaterno: document.getElementById('f_apM').value.trim(),
+    telefono: document.getElementById('f_tel').value.trim(),
+    correo: document.getElementById('f_correo').value.trim(),
+    fuente: document.getElementById('f_fuente').value,
+    notas: document.getElementById('f_notas').value.trim(),
+    agregadoPor: document.getElementById('f_quien').value
   };
-  const row = headers.map(function (h) { return values.hasOwnProperty(h) ? values[h] : ''; });
-  sheet.appendRow(row);
-  return { id: id };
-}
+  if(!data.nombre || !data.telefono){ toast('Falta nombre o teléfono'); return; }
+  apiPost({action:'add', data}).then(res=>{
+    if(res.ok){
+      toast('Contacto guardado ✅');
+      document.getElementById('formNuevo').reset();
+      closeOverlay('overlayNuevo');
+      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelector('.nav-btn[data-tab="lista"]').classList.add('active');
+      loadContacts();
+    } else {
+      toast('Error: ' + res.error);
+    }
+  });
+});
 
-function updateStatus(id, status) {
-  const sheet = getSheet();
-  const row = findRowById(sheet, id);
-  if (row < 0) throw new Error('Contacto no encontrado');
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  sheet.getRange(row, colIndex(headers, 'Estatus')).setValue(status);
-  sheet.getRange(row, colIndex(headers, 'Última actualización')).setValue(new Date());
-  return { ok: true };
-}
+// ---- Detalle ----
+function openDetail(id){
+  const c = CONTACTS.find(x=>String(x['ID'])===String(id));
+  if(!c) return;
+  currentDetailId = id;
+  document.getElementById('det_nombre').textContent = [c['Nombre'], c['Apellido Paterno']].filter(Boolean).join(' ');
 
-function updateNotes(id, notes) {
-  const sheet = getSheet();
-  const row = findRowById(sheet, id);
-  if (row < 0) throw new Error('Contacto no encontrado');
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  sheet.getRange(row, colIndex(headers, 'Notas')).setValue(notes);
-  sheet.getRange(row, colIndex(headers, 'Última actualización')).setValue(new Date());
-  return { ok: true };
-}
+  const statusButtons = STATUSES.map(s=>{
+    const sel = s===c['Estatus'] ? 'sel' : '';
+    const bg = s===c['Estatus'] ? `style="background:${STATUS_COLORS[s]}"` : '';
+    return `<button class="status-opt ${sel}" data-status="${s}" ${bg}>${s}</button>`;
+  }).join('');
 
-function scheduleCall(id, dateStr, timeStr, durationMin, sucursal) {
-  const sheet = getSheet();
-  const row = findRowById(sheet, id);
-  if (row < 0) throw new Error('Contacto no encontrado');
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const citaBox = c['Fecha Cita']
+    ? `<div class="cita-box">
+         <div class="info-line"><span>Fecha</span><span>${escapeHtml(c['Fecha Cita'])}</span></div>
+         <div class="info-line"><span>Hora</span><span>${escapeHtml(c['Hora Cita'])}</span></div>
+         <div class="info-line"><span>Sucursal</span><span>${escapeHtml(c['Sucursal']||'—')}</span></div>
+         <div style="margin-top:10px;"><button class="btn btn-outline" id="btnCancelarCita">Cancelar cita</button></div>
+       </div>`
+    : '';
 
-  const nombreCompleto = [rowData[colIndex(headers, 'Nombre') - 1], rowData[colIndex(headers, 'Apellido Paterno') - 1]].join(' ').trim();
-  const telefono = rowData[colIndex(headers, 'Teléfono') - 1];
-  const oldEventId = rowData[colIndex(headers, 'Calendar Event ID') - 1];
+  const sucursalOptions = SUCURSALES.map(s=>{
+    const sel = s === c['Sucursal'] ? 'selected' : '';
+    return `<option value="${escapeHtml(s)}" ${sel}>${escapeHtml(s)}</option>`;
+  }).join('');
 
-  const cal = CalendarApp.getCalendarById(CALENDAR_ID);
-  if (!cal) throw new Error('No se encontró el calendario. Revisa el CALENDAR_ID en el código.');
+  document.getElementById('det_body').innerHTML = `
+    <div class="info-line"><span>Teléfono</span><span>${escapeHtml(c['Teléfono']||'—')}</span></div>
+    <div class="info-line"><span>Correo</span><span>${escapeHtml(c['Correo']||'—')}</span></div>
+    <div class="info-line"><span>Fuente</span><span>${escapeHtml(c['Fuente']||'—')}</span></div>
+    <div class="info-line"><span>Registrado por</span><span>${escapeHtml(c['Agregado por']||'—')}</span></div>
 
-  if (oldEventId) {
-    try {
-      const oldEvent = cal.getEventById(oldEventId);
-      if (oldEvent) oldEvent.deleteEvent();
-    } catch (e) { /* si ya no existe, seguimos */ }
+    <div class="section-label">Estatus</div>
+    <div class="status-grid" id="statusGrid">${statusButtons}</div>
+
+    <div class="section-label">Notas</div>
+    <textarea id="det_notas" style="width:100%;min-height:80px;padding:12px;border-radius:10px;border:1.5px solid var(--line);font-family:inherit;font-size:15px;">${escapeHtml(c['Notas']||'')}</textarea>
+    <div style="margin-top:8px;"><button class="btn btn-ghost" id="btnGuardarNotas">Guardar notas</button></div>
+
+    <div class="section-label">Llamada</div>
+    ${citaBox}
+    <div class="field" style="margin-top:${c['Fecha Cita']?'14px':'0'}"><label>Fecha</label><input type="date" id="det_fecha"></div>
+    <div class="field" style="margin-top:12px"><label>Hora</label><input type="time" id="det_hora"></div>
+    <div class="field" style="margin-top:12px"><label>Sucursal</label>
+      <select id="det_sucursal">
+        <option value="">Selecciona una sucursal</option>
+        ${sucursalOptions}
+      </select>
+    </div>
+    <div style="margin-top:10px;"><button class="btn btn-amber" id="btnAgendar">${c['Fecha Cita']?'Reagendar llamada':'Agendar llamada'}</button></div>
+  `;
+
+  document.querySelectorAll('#statusGrid .status-opt').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      apiPost({action:'updateStatus', id, status:btn.dataset.status}).then(res=>{
+        if(res.ok){ toast('Estatus actualizado ✅'); loadContacts().then(()=>openDetail(id)); }
+        else toast('Error: '+res.error);
+      });
+    });
+  });
+
+  document.getElementById('btnGuardarNotas').addEventListener('click', ()=>{
+    const notas = document.getElementById('det_notas').value;
+    apiPost({action:'updateNotes', id, notas}).then(res=>{
+      if(res.ok){ toast('Notas guardadas ✅'); loadContacts(); }
+      else toast('Error: '+res.error);
+    });
+  });
+
+  document.getElementById('btnAgendar').addEventListener('click', ()=>{
+    const date = document.getElementById('det_fecha').value;
+    const time = document.getElementById('det_hora').value;
+    const sucursal = document.getElementById('det_sucursal').value;
+    if(!date || !time){ toast('Elige fecha y hora'); return; }
+    if(!sucursal){ toast('Elige una sucursal'); return; }
+    apiPost({action:'schedule', id, date, time, duration:30, sucursal}).then(res=>{
+      if(res.ok){
+        toast(res.data.invitoCorreo ? 'Llamada agendada e invitación enviada ✅' : 'Llamada agendada ✅ (sin correo para invitar)');
+        loadContacts().then(()=>openDetail(id));
+      }
+      else toast('Error: '+res.error);
+    });
+  });
+
+  const btnCancelar = document.getElementById('btnCancelarCita');
+  if(btnCancelar){
+    btnCancelar.addEventListener('click', ()=>{
+      apiPost({action:'cancelSchedule', id}).then(res=>{
+        if(res.ok){ toast('Cita cancelada'); loadContacts().then(()=>openDetail(id)); }
+        else toast('Error: '+res.error);
+      });
+    });
   }
 
-  const start = Utilities.parseDate(dateStr + ' ' + timeStr, ZONA_HORARIA, 'yyyy-MM-dd HH:mm');
-  const dur = durationMin ? Number(durationMin) : 30;
-  const end = new Date(start.getTime() + dur * 60000);
-  const ubicacion = SUCURSALES[sucursal] || '';
-  const correo = rowData[colIndex(headers, 'Correo') - 1];
-
-  const eventOptions = {
-    description: 'Teléfono: ' + telefono + '\nID Contacto: ' + id + '\n\n' + NOTA_CITA,
-    location: ubicacion
-  };
-  if (correo) {
-    eventOptions.guests = correo;
-    eventOptions.sendInvites = true;
-  }
-
-  const event = cal.createEvent('Prueba de Traje - ' + nombreCompleto, start, end, eventOptions);
-
-  sheet.getRange(row, colIndex(headers, 'Fecha Cita')).setValue(dateStr);
-  sheet.getRange(row, colIndex(headers, 'Hora Cita')).setValue(timeStr);
-  sheet.getRange(row, colIndex(headers, 'Sucursal')).setValue(sucursal || '');
-  sheet.getRange(row, colIndex(headers, 'Calendar Event ID')).setValue(event.getId());
-  sheet.getRange(row, colIndex(headers, 'Última actualización')).setValue(new Date());
-
-  return { eventId: event.getId(), invitoCorreo: !!correo };
+  location.hash = '#/contacto/' + id;
+  openOverlay('overlayDetalle');
 }
 
-function cancelSchedule(id) {
-  const sheet = getSheet();
-  const row = findRowById(sheet, id);
-  if (row < 0) throw new Error('Contacto no encontrado');
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const rowData = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const eventId = rowData[colIndex(headers, 'Calendar Event ID') - 1];
-
-  if (eventId) {
-    const cal = CalendarApp.getCalendarById(CALENDAR_ID);
-    try {
-      const ev = cal.getEventById(eventId);
-      if (ev) ev.deleteEvent();
-    } catch (e) { /* si ya no existe, seguimos */ }
-  }
-
-  sheet.getRange(row, colIndex(headers, 'Fecha Cita')).setValue('');
-  sheet.getRange(row, colIndex(headers, 'Hora Cita')).setValue('');
-  sheet.getRange(row, colIndex(headers, 'Sucursal')).setValue('');
-  sheet.getRange(row, colIndex(headers, 'Calendar Event ID')).setValue('');
-  sheet.getRange(row, colIndex(headers, 'Última actualización')).setValue(new Date());
-  return { ok: true };
+function closeDetailAndClearHash(){
+  closeOverlay('overlayDetalle');
+  if(location.hash.startsWith('#/contacto/')) history.replaceState(null, '', location.pathname + location.search);
 }
+
+renderChips();
+Promise.all([loadTeamAndStatuses(), loadContacts()]).then(()=>{
+  const match = location.hash.match(/^#\/contacto\/(.+)$/);
+  if(match && CONTACTS.some(c=>String(c['ID'])===match[1])){
+    openDetail(match[1]);
+  }
+});
+</script>
+</body>
+</html>
