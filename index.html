@@ -21,7 +21,7 @@
     --st-compro: #4C8C4A;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
+  html,body{margin:0;padding:0; overflow-x:hidden; max-width:100vw;}
   body{
     background:var(--paper);
     color:var(--ink);
@@ -82,7 +82,7 @@
   }
   .card .row-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
   .card .name{ font-weight:800; font-size:16px; }
-  .card .phone{ color:var(--ink-soft); font-size:13.5px; margin-top:1px; }
+  .card .phone{ color:var(--ink-soft); font-size:13.5px; margin-top:1px; display:inline-block; text-decoration:none; }
   .pill{
     font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em;
     padding:4px 9px; border-radius:999px; color:#fff; white-space:nowrap;
@@ -131,6 +131,7 @@
   .btn-amber:active{ background:var(--amber-dark); }
   .btn-outline{ background:transparent; color:var(--st-no-atendio); border:1.5px solid var(--st-no-atendio); }
   .btn-ghost{ background:transparent; color:var(--ink-soft); border:1.5px solid var(--line); }
+  .btn:disabled{ opacity:0.6; cursor:not-allowed; }
 
   .overlay{
     position:fixed; inset:0; background:var(--paper); z-index:40;
@@ -162,7 +163,8 @@
 
   .info-line{ font-size:15px; padding:7px 0; border-bottom:1px dashed var(--line); display:flex; justify-content:space-between; gap:10px; }
   .info-line span:first-child{ color:var(--ink-soft); font-size:13px; }
-  .info-line span:last-child{ font-weight:600; text-align:right; }
+  .info-line span:last-child{ font-weight:600; text-align:right; overflow-wrap:anywhere; min-width:0; }
+  .phone-link{ color:var(--teal-dark); text-decoration:none; }
 
   .toast{
     position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
@@ -176,6 +178,13 @@
     background:#EFF6F4; border:1px solid #CFE4DF; border-radius:12px; padding:12px; margin-top:10px;
   }
   .loading{ text-align:center; padding:40px; color:var(--ink-soft); }
+
+  .cita-alert{ color:var(--st-no-atendio); font-weight:800; font-size:11.5px; margin-top:2px; }
+  .alerta-vencida{
+    background:#FDEDEC; border:1px solid #F1B3AE; color:#8A2E28; border-radius:10px;
+    padding:10px 12px; font-size:13.5px; font-weight:700; margin-top:10px;
+  }
+  .sort-row{ margin-top:8px; }
 
   #loadingOverlay{
     position:fixed; inset:0; z-index:100;
@@ -209,6 +218,11 @@
     <input type="search" id="searchInput" placeholder="Buscar por nombre o teléfono...">
   </div>
   <div id="statusChips" class="chips"></div>
+  <div id="citaChips" class="chips"></div>
+  <div id="sucursalChips" class="chips"></div>
+  <div id="sortRow" class="sort-row" style="display:none;">
+    <button class="chip" id="btnSortDir">↑ Más próxima primero</button>
+  </div>
 </header>
 
 <main id="mainList">
@@ -234,7 +248,7 @@
         <div class="field"><label>Apellido materno</label><input type="text" id="f_apM"></div>
       </div>
       <div class="field"><label>Teléfono</label><input type="tel" id="f_tel" required placeholder="10 dígitos"></div>
-      <div class="field"><label>Correo (opcional)</label><input type="email" id="f_correo"></div>
+      <div class="field"><label>Correo</label><input type="email" id="f_correo" required></div>
       <div class="field">
         <label>Fuente</label>
         <select id="f_fuente">
@@ -249,6 +263,17 @@
         <label>Registrado por</label>
         <select id="f_quien"></select>
       </div>
+
+      <div class="section-label">Agendar prueba de traje (opcional)</div>
+      <div class="field">
+        <label>Sucursal</label>
+        <select id="f_cita_sucursal"><option value="">No agendar ahora</option></select>
+      </div>
+      <div class="two-col" style="margin-top:10px">
+        <div class="field"><label>Fecha</label><input type="date" id="f_cita_fecha"></div>
+        <div class="field"><label>Hora</label><select id="f_cita_hora"><option value="">Selecciona una hora</option></select></div>
+      </div>
+
       <button type="submit" class="btn btn-primary">Guardar contacto</button>
     </form>
   </div>
@@ -283,11 +308,36 @@ const STATUS_COLORS = {
   'No compró': 'var(--st-no-compro)',
   'Compró': 'var(--st-compro)'
 };
+// Bloques de cita de una hora exacta (no minutos libres). Ajusta HORA_INICIO/HORA_FIN
+// si el horario de atención de la tienda cambia.
+const HORA_INICIO = 9;  // 9:00 a.m.
+const HORA_FIN = 20;    // 8:00 p.m. (última cita del día)
+function generarOpcionesHora(){
+  let html = '';
+  for(let h = HORA_INICIO; h <= HORA_FIN; h++){
+    const value = String(h).padStart(2,'0') + ':00';
+    const ampm = h < 12 ? 'a.m.' : 'p.m.';
+    let h12 = h % 12; if(h12 === 0) h12 = 12;
+    html += `<option value="${value}">${h12}:00 ${ampm}</option>`;
+  }
+  return html;
+}
+
+function telHref(tel){
+  const digits = String(tel||'').replace(/\D/g,'');
+  if(!digits) return '';
+  const conCodigo = digits.startsWith('56') ? digits : '56' + digits.replace(/^0+/,'');
+  return 'https://wa.me/' + conCodigo;
+}
+
 let STATUSES = Object.keys(STATUS_COLORS);
 let TEAM = [];
 let SUCURSALES = [];
 let CONTACTS = [];
 let activeStatusFilter = 'Todos';
+let activeCitaFilter = 'Todos'; // 'Todos' | 'Con cita'
+let activeSucursalFilter = 'Todas';
+let citaSortDir = 'asc'; // 'asc' = más próxima primero, 'desc' = más lejana primero
 let currentDetailId = null;
 
 function toast(msg){
@@ -352,14 +402,68 @@ function renderChips(){
   });
 }
 
+function renderCitaChips(){
+  const wrap = document.getElementById('citaChips');
+  const opts = [
+    { value: 'Todos', label: 'Todos los contactos' },
+    { value: 'Con cita', label: '📅 Solo con cita activa' }
+  ];
+  wrap.innerHTML = opts.map(o=>
+    `<button class="chip ${o.value===activeCitaFilter?'active':''}" data-cita="${o.value}">${o.label}</button>`
+  ).join('');
+  wrap.querySelectorAll('.chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      activeCitaFilter = chip.dataset.cita;
+      renderCitaChips();
+      document.getElementById('sortRow').style.display = activeCitaFilter === 'Con cita' ? 'block' : 'none';
+      renderList();
+    });
+  });
+}
+
+function renderSucursalChips(){
+  const wrap = document.getElementById('sucursalChips');
+  const opts = ['Todas', ...SUCURSALES];
+  wrap.innerHTML = opts.map(s=>
+    `<button class="chip ${s===activeSucursalFilter?'active':''}" data-suc="${s}">${escapeHtml(s)}</button>`
+  ).join('');
+  wrap.querySelectorAll('.chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      activeSucursalFilter = chip.dataset.suc;
+      renderSucursalChips();
+      renderList();
+    });
+  });
+}
+
+document.getElementById('btnSortDir').addEventListener('click', ()=>{
+  citaSortDir = citaSortDir === 'asc' ? 'desc' : 'asc';
+  document.getElementById('btnSortDir').textContent = citaSortDir === 'asc' ? '↑ Más próxima primero' : '↓ Más lejana primero';
+  renderList();
+});
+
+function citaVencidaSinActualizar(c){
+  return !!(c['Fecha Cita'] && c['Cita Timestamp'] && Number(c['Cita Timestamp']) < Date.now() && c['Estatus'] === 'Pendiente');
+}
+
 function renderList(){
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
   let list = CONTACTS.filter(c=>{
     const matchesStatus = activeStatusFilter==='Todos' || c['Estatus']===activeStatusFilter;
     const full = (c['Nombre']+' '+c['Apellido Paterno']+' '+c['Apellido Materno']+' '+c['Teléfono']).toLowerCase();
     const matchesQ = !q || full.includes(q);
-    return matchesStatus && matchesQ;
+    const matchesCita = activeCitaFilter==='Todos' || !!c['Fecha Cita'];
+    const matchesSucursal = activeSucursalFilter==='Todas' || c['Sucursal']===activeSucursalFilter;
+    return matchesStatus && matchesQ && matchesCita && matchesSucursal;
   });
+
+  if(activeCitaFilter === 'Con cita'){
+    list = list.slice().sort((a,b)=>{
+      const ta = Number(a['Cita Timestamp']) || Infinity;
+      const tb = Number(b['Cita Timestamp']) || Infinity;
+      return citaSortDir === 'asc' ? ta - tb : tb - ta;
+    });
+  }
 
   const main = document.getElementById('mainList');
   if(list.length===0){
@@ -368,13 +472,14 @@ function renderList(){
   }
   main.innerHTML = list.map(c=>{
     const color = STATUS_COLORS[c['Estatus']] || 'var(--st-pendiente)';
-    const cita = c['Fecha Cita'] ? `<div class="cita">📅 ${c['Fecha Cita']} ${c['Hora Cita']||''}${c['Sucursal'] ? ' · ' + escapeHtml(c['Sucursal']) : ''}</div>` : '';
+    const alerta = citaVencidaSinActualizar(c) ? `<div class="cita-alert">⚠️ Cita vencida — falta actualizar el estatus</div>` : '';
+    const cita = c['Fecha Cita'] ? `<div class="cita">📅 ${c['Fecha Cita']} ${c['Hora Cita']||''}${c['Sucursal'] ? ' · ' + escapeHtml(c['Sucursal']) : ''}</div>${alerta}` : '';
     return `
     <div class="card" style="border-left-color:${color}" data-id="${c['ID']}">
       <div class="row-top">
         <div>
           <div class="name">${escapeHtml(c['Nombre'])} ${escapeHtml(c['Apellido Paterno']||'')}</div>
-          <div class="phone">📞 ${escapeHtml(c['Teléfono']||'—')}</div>
+          ${c['Teléfono'] ? `<a class="phone" href="${telHref(c['Teléfono'])}" target="_blank" rel="noopener">📞 ${escapeHtml(c['Teléfono'])}</a>` : `<div class="phone">📞 —</div>`}
         </div>
         <span class="pill" style="background:${color}">${c['Estatus'] || 'Pendiente'}</span>
       </div>
@@ -384,7 +489,10 @@ function renderList(){
   }).join('');
 
   main.querySelectorAll('.card').forEach(card=>{
-    card.addEventListener('click', ()=>openDetail(card.dataset.id));
+    card.addEventListener('click', (e)=>{
+      if(e.target.closest('a')) return; // no abrir el detalle si se hizo clic en el teléfono (abre WhatsApp)
+      openDetail(card.dataset.id);
+    });
   });
 }
 
@@ -415,7 +523,10 @@ function loadTeamAndStatuses(){
       SUCURSALES = res.data.sucursales || [];
       const sel = document.getElementById('f_quien');
       sel.innerHTML = TEAM.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      const selCitaSucursal = document.getElementById('f_cita_sucursal');
+      selCitaSucursal.innerHTML = '<option value="">No agendar ahora</option>' + SUCURSALES.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
       renderChips();
+      renderSucursalChips();
     }
   });
 }
@@ -423,6 +534,9 @@ function loadTeamAndStatuses(){
 // ---- Nuevo contacto ----
 document.getElementById('formNuevo').addEventListener('submit', e=>{
   e.preventDefault();
+  const btnGuardar = e.target.querySelector('button[type="submit"]');
+  if(btnGuardar.disabled) return; // evita crear el contacto dos veces por doble clic
+
   const data = {
     nombre: document.getElementById('f_nombre').value.trim(),
     apellidoPaterno: document.getElementById('f_apP').value.trim(),
@@ -433,19 +547,37 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
     notas: document.getElementById('f_notas').value.trim(),
     agregadoPor: document.getElementById('f_quien').value
   };
-  if(!data.nombre || !data.telefono){ toast('Falta nombre o teléfono'); return; }
+  if(!data.nombre || !data.telefono || !data.correo){ toast('Falta nombre, teléfono o correo'); return; }
+
+  const citaSucursal = document.getElementById('f_cita_sucursal').value;
+  const citaFecha = document.getElementById('f_cita_fecha').value;
+  const citaHora = document.getElementById('f_cita_hora').value;
+  const quiereAgendar = !!(citaSucursal || citaFecha || citaHora);
+  if(quiereAgendar && (!citaSucursal || !citaFecha || !citaHora)){
+    toast('Para agendar la cita, completa sucursal, fecha y hora (o deja los tres vacíos)');
+    return;
+  }
+
+  btnGuardar.disabled = true;
   apiPost({action:'add', data}).then(res=>{
-    if(res.ok){
+    if(!res.ok){ toast('Error: ' + res.error); return false; }
+    if(!quiereAgendar){
       toast('Contacto guardado ✅');
-      document.getElementById('formNuevo').reset();
-      closeOverlay('overlayNuevo');
-      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-      document.querySelector('.nav-btn[data-tab="lista"]').classList.add('active');
-      loadContacts();
-    } else {
-      toast('Error: ' + res.error);
+      return true;
     }
-  });
+    return apiPost({action:'schedule', id: res.data.id, date: citaFecha, time: citaHora, duration: 30, sucursal: citaSucursal}).then(schedRes=>{
+      if(schedRes.ok) toast('Contacto guardado y cita agendada ✅');
+      else toast('Contacto guardado, pero la cita no se pudo agendar: ' + schedRes.error);
+      return true; // el contacto sí se creó, aunque falle el agendamiento
+    });
+  }).then(contactoCreado=>{
+    if(!contactoCreado) return;
+    document.getElementById('formNuevo').reset();
+    closeOverlay('overlayNuevo');
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelector('.nav-btn[data-tab="lista"]').classList.add('active');
+    return loadContacts();
+  }).finally(()=>{ btnGuardar.disabled = false; });
 });
 
 // ---- Detalle ----
@@ -461,8 +593,13 @@ function openDetail(id){
     return `<button class="status-opt ${sel}" data-status="${s}" ${bg}>${s}</button>`;
   }).join('');
 
+  const alertaCita = citaVencidaSinActualizar(c)
+    ? `<div class="alerta-vencida">⚠️ Esta cita ya pasó y el estatus sigue "Pendiente". Actualízalo abajo.</div>`
+    : '';
+
   const citaBox = c['Fecha Cita']
     ? `<div class="cita-box">
+         ${alertaCita}
          <div class="info-line"><span>Fecha</span><span>${escapeHtml(c['Fecha Cita'])}</span></div>
          <div class="info-line"><span>Hora</span><span>${escapeHtml(c['Hora Cita'])}</span></div>
          <div class="info-line"><span>Sucursal</span><span>${escapeHtml(c['Sucursal']||'—')}</span></div>
@@ -476,7 +613,7 @@ function openDetail(id){
   }).join('');
 
   document.getElementById('det_body').innerHTML = `
-    <div class="info-line"><span>Teléfono</span><span>${escapeHtml(c['Teléfono']||'—')}</span></div>
+    <div class="info-line"><span>Teléfono</span><span>${c['Teléfono'] ? `<a class="phone-link" href="${telHref(c['Teléfono'])}" target="_blank" rel="noopener">💬 ${escapeHtml(c['Teléfono'])}</a>` : '—'}</span></div>
     <div class="info-line"><span>Correo</span><span>${escapeHtml(c['Correo']||'—')}</span></div>
     <div class="info-line"><span>Fuente</span><span>${escapeHtml(c['Fuente']||'—')}</span></div>
     <div class="info-line"><span>Registrado por</span><span>${escapeHtml(c['Agregado por']||'—')}</span></div>
@@ -491,7 +628,7 @@ function openDetail(id){
     <div class="section-label">Llamada</div>
     ${citaBox}
     <div class="field" style="margin-top:${c['Fecha Cita']?'14px':'0'}"><label>Fecha</label><input type="date" id="det_fecha"></div>
-    <div class="field" style="margin-top:12px"><label>Hora</label><input type="time" id="det_hora"></div>
+    <div class="field" style="margin-top:12px"><label>Hora</label><select id="det_hora"><option value="">Selecciona una hora</option>${generarOpcionesHora()}</select></div>
     <div class="field" style="margin-top:12px"><label>Sucursal</label>
       <select id="det_sucursal">
         <option value="">Selecciona una sucursal</option>
@@ -552,7 +689,9 @@ function closeDetailAndClearHash(){
   if(location.hash.startsWith('#/contacto/')) history.replaceState(null, '', location.pathname + location.search);
 }
 
+document.getElementById('f_cita_hora').innerHTML = '<option value="">Selecciona una hora</option>' + generarOpcionesHora();
 renderChips();
+renderCitaChips();
 Promise.all([loadTeamAndStatuses(), loadContacts()]).then(()=>{
   const match = location.hash.match(/^#\/contacto\/(.+)$/);
   if(match && CONTACTS.some(c=>String(c['ID'])===match[1])){
