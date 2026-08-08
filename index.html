@@ -64,6 +64,12 @@
   }
   .chip.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
 
+  .filters-row{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .filter-select{
+    flex:1 1 140px; min-width:140px; padding:9px 8px; border-radius:10px; border:1.5px solid var(--line);
+    background:var(--card); color:var(--ink); font-size:12.5px; font-weight:700;
+  }
+
   main{ padding:14px 16px 8px; max-width:640px; margin:0 auto; }
 
   .empty{
@@ -118,7 +124,8 @@
   }
   .field textarea{ resize:vertical; min-height:70px; }
   .two-col{ display:flex; gap:10px; }
-  .two-col .field{ flex:1; }
+  .two-col .field{ flex:1 1 0; min-width:0; }
+  .two-col .field input, .two-col .field select{ width:100%; min-width:0; }
 
   .btn{
     display:inline-flex; align-items:center; justify-content:center;
@@ -217,9 +224,11 @@
   <div id="listControls" class="searchbar">
     <input type="search" id="searchInput" placeholder="Buscar por nombre o teléfono...">
   </div>
-  <div id="statusChips" class="chips"></div>
-  <div id="citaChips" class="chips"></div>
-  <div id="sucursalChips" class="chips"></div>
+  <div class="filters-row">
+    <select id="filterEstatus" class="filter-select"></select>
+    <select id="filterCita" class="filter-select"></select>
+    <select id="filterSucursal" class="filter-select"></select>
+  </div>
   <div id="sortRow" class="sort-row" style="display:none;">
     <button class="chip" id="btnSortDir">↑ Más próxima primero</button>
   </div>
@@ -269,10 +278,8 @@
         <label>Sucursal</label>
         <select id="f_cita_sucursal"><option value="">No agendar ahora</option></select>
       </div>
-      <div class="two-col" style="margin-top:10px">
-        <div class="field"><label>Fecha</label><input type="date" id="f_cita_fecha"></div>
-        <div class="field"><label>Hora</label><select id="f_cita_hora"><option value="">Selecciona una hora</option></select></div>
-      </div>
+      <div class="field" style="margin-top:12px"><label>Fecha</label><input type="date" id="f_cita_fecha"></div>
+      <div class="field" style="margin-top:12px"><label>Hora</label><select id="f_cita_hora"><option value="">Selecciona una hora</option></select></div>
 
       <button type="submit" class="btn btn-primary">Guardar contacto</button>
     </form>
@@ -388,53 +395,37 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
   });
 });
 function renderChips(){
-  const wrap = document.getElementById('statusChips');
+  const sel = document.getElementById('filterEstatus');
   const opts = ['Todos', ...STATUSES];
-  wrap.innerHTML = opts.map(s=>
-    `<button class="chip ${s===activeStatusFilter?'active':''}" data-status="${s}">${s}</button>`
-  ).join('');
-  wrap.querySelectorAll('.chip').forEach(chip=>{
-    chip.addEventListener('click', ()=>{
-      activeStatusFilter = chip.dataset.status;
-      renderChips();
-      renderList();
-    });
-  });
+  sel.innerHTML = opts.map(s=>`<option value="${escapeHtml(s)}">${s==='Todos' ? 'Estatus: Todos' : escapeHtml(s)}</option>`).join('');
+  sel.value = activeStatusFilter;
 }
+document.getElementById('filterEstatus').addEventListener('change', e=>{
+  activeStatusFilter = e.target.value;
+  renderList();
+});
 
 function renderCitaChips(){
-  const wrap = document.getElementById('citaChips');
-  const opts = [
-    { value: 'Todos', label: 'Todos los contactos' },
-    { value: 'Con cita', label: '📅 Solo con cita activa' }
-  ];
-  wrap.innerHTML = opts.map(o=>
-    `<button class="chip ${o.value===activeCitaFilter?'active':''}" data-cita="${o.value}">${o.label}</button>`
-  ).join('');
-  wrap.querySelectorAll('.chip').forEach(chip=>{
-    chip.addEventListener('click', ()=>{
-      activeCitaFilter = chip.dataset.cita;
-      renderCitaChips();
-      document.getElementById('sortRow').style.display = activeCitaFilter === 'Con cita' ? 'block' : 'none';
-      renderList();
-    });
-  });
+  const sel = document.getElementById('filterCita');
+  sel.innerHTML = `<option value="Todos">Todos los contactos</option><option value="Con cita">📅 Solo con cita activa</option>`;
+  sel.value = activeCitaFilter;
 }
+document.getElementById('filterCita').addEventListener('change', e=>{
+  activeCitaFilter = e.target.value;
+  document.getElementById('sortRow').style.display = activeCitaFilter === 'Con cita' ? 'block' : 'none';
+  renderList();
+});
 
 function renderSucursalChips(){
-  const wrap = document.getElementById('sucursalChips');
+  const sel = document.getElementById('filterSucursal');
   const opts = ['Todas', ...SUCURSALES];
-  wrap.innerHTML = opts.map(s=>
-    `<button class="chip ${s===activeSucursalFilter?'active':''}" data-suc="${s}">${escapeHtml(s)}</button>`
-  ).join('');
-  wrap.querySelectorAll('.chip').forEach(chip=>{
-    chip.addEventListener('click', ()=>{
-      activeSucursalFilter = chip.dataset.suc;
-      renderSucursalChips();
-      renderList();
-    });
-  });
+  sel.innerHTML = opts.map(s=>`<option value="${escapeHtml(s)}">${s==='Todas' ? 'Sucursal: Todas' : escapeHtml(s)}</option>`).join('');
+  sel.value = activeSucursalFilter;
 }
+document.getElementById('filterSucursal').addEventListener('change', e=>{
+  activeSucursalFilter = e.target.value;
+  renderList();
+});
 
 document.getElementById('btnSortDir').addEventListener('click', ()=>{
   citaSortDir = citaSortDir === 'asc' ? 'desc' : 'asc';
