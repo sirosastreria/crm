@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Agenda tu prueba de traje</title>
+<style>
+  :root{
+    --paper: #FAF6EE;
+    --card: #FFFFFF;
+    --ink: #2B2723;
+    --ink-soft: #6E655B;
+    --line: #E7DFD2;
+    --teal: #2A6F63;
+    --teal-dark: #1F5049;
+    --amber: #E1962F;
+    --amber-dark: #C97D1D;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .wrap{ max-width:480px; margin:0 auto; padding:28px 18px 60px; }
+  .brand{ text-align:center; margin-bottom:22px; }
+  .brand h1{ font-size:22px; margin:0 0 4px; letter-spacing:-0.01em; font-weight:800; }
+  .brand p{ font-size:13.5px; color:var(--ink-soft); margin:0; }
+
+  .card{
+    background:var(--card); border-radius:16px; border:1px solid var(--line);
+    padding:20px 18px; margin-bottom:14px;
+  }
+  .step-title{ font-size:16px; font-weight:800; margin:0 0 4px; }
+  .step-sub{ font-size:13.5px; color:var(--ink-soft); margin:0 0 16px; }
+
+  form.stack{ display:flex; flex-direction:column; gap:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.03em; }
+  .field input, .field select, .field textarea{
+    width:100%; padding:12px 13px; border-radius:10px; border:1.5px solid var(--line);
+    font-size:15.5px; color:var(--ink); background:var(--card); font-family:inherit;
+  }
+  .two-col{ display:flex; gap:10px; }
+  .two-col .field{ flex:1 1 0; min-width:0; }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding:14px 18px; border-radius:12px; border:none; font-weight:800; font-size:15.5px;
+    width:100%; cursor:pointer;
+  }
+  .btn-primary{ background:var(--teal); color:#fff; }
+  .btn-primary:active{ background:var(--teal-dark); }
+  .btn-amber{ background:var(--amber); color:#fff; }
+  .btn-amber:active{ background:var(--amber-dark); }
+  .btn-ghost{ background:transparent; color:var(--ink-soft); border:1.5px solid var(--line); }
+  .btn:disabled{ opacity:0.6; cursor:not-allowed; }
+
+  .hello{
+    background:#EFF6F4; border:1px solid #CFE4DF; border-radius:12px; padding:12px 14px;
+    font-size:14.5px; margin-bottom:14px;
+  }
+  .hello strong{ color:var(--teal-dark); }
+
+  .confirm{ text-align:center; padding:10px 0; }
+  .confirm .check{ font-size:44px; margin-bottom:6px; }
+  .confirm h2{ font-size:19px; margin:0 0 6px; }
+  .confirm p{ font-size:14.5px; color:var(--ink-soft); margin:2px 0; }
+  .confirm .detail{ color:var(--ink); font-weight:700; }
+
+  .error-box{
+    background:#FDEDEC; border:1px solid #F1B3AE; color:#8A2E28; border-radius:10px;
+    padding:10px 12px; font-size:13.5px; font-weight:600; margin-bottom:12px; display:none;
+  }
+  .error-box.show{ display:block; }
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:11px 18px; border-radius:12px;
+    font-size:14px; font-weight:600; z-index:60; opacity:0; transition:opacity 0.25s;
+    max-width:85vw; text-align:center;
+  }
+  .toast.show{ opacity:1; }
+
+  #loadingOverlay{
+    position:fixed; inset:0; z-index:100; background:rgba(43,39,35,0.35);
+    display:none; align-items:center; justify-content:center;
+  }
+  #loadingOverlay.show{ display:flex; }
+  .spinner-box{
+    background:var(--card); border-radius:14px; padding:22px 28px;
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18);
+  }
+  .spinner{
+    width:34px; height:34px; border-radius:50%;
+    border:4px solid var(--line); border-top-color:var(--teal);
+    animation:spin 0.7s linear infinite;
+  }
+  .spinner-box span{ font-size:13.5px; font-weight:700; color:var(--ink-soft); }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .hidden{ display:none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="brand">
+    <h1>Agenda tu prueba de traje</h1>
+    <p>Solo toma un minuto.</p>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- PASO 1: identificación por teléfono -->
+  <div class="card" id="cardTelefono">
+    <div class="step-title">Empecemos con tu teléfono</div>
+    <p class="step-sub">Así revisamos si ya tienes un registro con nosotros.</p>
+    <form class="stack" id="formTelefono">
+      <div class="field"><label>Teléfono</label><input type="tel" id="p_tel" required value="+56 " placeholder="+56 9 1234 5678"></div>
+      <button type="submit" class="btn btn-primary" id="btnBuscar">Continuar</button>
+    </form>
+  </div>
+
+  <!-- PASO 2A: contacto encontrado -->
+  <div class="card hidden" id="cardEncontrado">
+    <div class="hello" id="helloBox"></div>
+    <div class="step-title">Elige sucursal, fecha y hora</div>
+    <form class="stack" id="formAgendarExistente">
+      <div class="field"><label>Sucursal</label><select id="x_sucursal"><option value="">Selecciona una sucursal</option></select></div>
+      <div class="field"><label>Fecha</label><input type="date" id="x_fecha" required></div>
+      <div class="field"><label>Hora</label><select id="x_hora" required><option value="">Selecciona una hora</option></select></div>
+      <button type="submit" class="btn btn-amber" id="btnAgendarExistente">Agendar</button>
+      <button type="button" class="btn btn-ghost" id="btnNoSoyYo">No soy yo / usar otro teléfono</button>
+    </form>
+  </div>
+
+  <!-- PASO 2B: contacto nuevo -->
+  <div class="card hidden" id="cardNuevo">
+    <div class="step-title">No te encontramos, ¡bienvenido!</div>
+    <p class="step-sub">Completa tus datos para crear tu registro y agendar.</p>
+    <form class="stack" id="formNuevo">
+      <div class="field"><label>Nombre</label><input type="text" id="n_nombre" required></div>
+      <div class="two-col">
+        <div class="field"><label>Apellido paterno</label><input type="text" id="n_apP"></div>
+        <div class="field"><label>Apellido materno</label><input type="text" id="n_apM"></div>
+      </div>
+      <div class="field"><label>Correo</label><input type="email" id="n_correo" required></div>
+      <div class="field"><label>Sucursal</label><select id="n_sucursal"><option value="">Selecciona una sucursal</option></select></div>
+      <div class="field"><label>Fecha</label><input type="date" id="n_fecha" required></div>
+      <div class="field"><label>Hora</label><select id="n_hora" required><option value="">Selecciona una hora</option></select></div>
+      <button type="submit" class="btn btn-amber" id="btnAgendarNuevo">Crear registro y agendar</button>
+      <button type="button" class="btn btn-ghost" id="btnCambiarTel">Usar otro teléfono</button>
+    </form>
+  </div>
+
+  <!-- PASO 3: confirmación -->
+  <div class="card hidden" id="cardConfirmacion">
+    <div class="confirm">
+      <div class="check">✅</div>
+      <h2>¡Listo, quedaste agendado!</h2>
+      <p>Sucursal: <span class="detail" id="conf_sucursal"></span></p>
+      <p>Fecha: <span class="detail" id="conf_fecha"></span></p>
+      <p>Hora: <span class="detail" id="conf_hora"></span></p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div id="loadingOverlay">
+  <div class="spinner-box">
+    <div class="spinner"></div>
+    <span>Un momento...</span>
+  </div>
+</div>
+
+<script>
+/* ============ MISMA URL QUE LA BITÁCORA INTERNA ============ */
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-IUnnJN1BHCT1uv6X7lLX5QGPz6IjuqrtamQH2c1nITL4lYL_yCtj9gsoDOwXAhOWSw/exec';
+/* ============================================================== */
+
+const HORA_INICIO = 9;
+const HORA_FIN = 20;
+function generarOpcionesHora(){
+  let html = '';
+  for(let h = HORA_INICIO; h <= HORA_FIN; h++){
+    const value = String(h).padStart(2,'0') + ':00';
+    const ampm = h < 12 ? 'a.m.' : 'p.m.';
+    let h12 = h % 12; if(h12 === 0) h12 = 12;
+    html += `<option value="${value}">${h12}:00 ${ampm}</option>`;
+  }
+  return html;
+}
+
+function normalizarTelefonoParaGuardar(tel){
+  const limpio = String(tel||'').trim();
+  if(limpio.startsWith('+')) return "'" + limpio;
+  return limpio;
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function showError(msg){
+  const box = document.getElementById('errorBox');
+  box.textContent = msg;
+  box.classList.add('show');
+}
+function clearError(){
+  document.getElementById('errorBox').classList.remove('show');
+}
+
+let pendingRequests = 0;
+function showLoading(){ pendingRequests++; document.getElementById('loadingOverlay').classList.add('show'); }
+function hideLoading(){ pendingRequests = Math.max(0, pendingRequests-1); if(pendingRequests===0) document.getElementById('loadingOverlay').classList.remove('show'); }
+
+function apiGet(params){
+  const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+  showLoading();
+  return fetch(APPS_SCRIPT_URL + qs).then(r=>r.json()).finally(hideLoading);
+}
+function apiPost(body){
+  showLoading();
+  return fetch(APPS_SCRIPT_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(body)
+  }).then(r=>r.json()).finally(hideLoading);
+}
+
+function showCard(id){
+  ['cardTelefono','cardEncontrado','cardNuevo','cardConfirmacion'].forEach(cid=>{
+    document.getElementById(cid).classList.toggle('hidden', cid!==id);
+  });
+}
+
+let SUCURSALES = [];
+let foundContactId = null;
+
+apiGet({action:'team'}).then(res=>{
+  if(res.ok){
+    SUCURSALES = res.data.sucursales || [];
+    const opts = '<option value="">Selecciona una sucursal</option>' + SUCURSALES.map(s=>`<option value="${s}">${s}</option>`).join('');
+    document.getElementById('x_sucursal').innerHTML = opts;
+    document.getElementById('n_sucursal').innerHTML = opts;
+  }
+});
+document.getElementById('x_hora').innerHTML = '<option value="">Selecciona una hora</option>' + generarOpcionesHora();
+document.getElementById('n_hora').innerHTML = '<option value="">Selecciona una hora</option>' + generarOpcionesHora();
+
+// ---- PASO 1: buscar por teléfono ----
+document.getElementById('formTelefono').addEventListener('submit', e=>{
+  e.preventDefault();
+  clearError();
+  const tel = document.getElementById('p_tel').value.trim();
+  if(!tel){ showError('Ingresa tu teléfono.'); return; }
+
+  apiGet({action:'findByPhone', phone: tel}).then(res=>{
+    if(!res.ok){ showError('No se pudo buscar tu registro: ' + (res.error||'')); return; }
+    if(res.data && res.data.found){
+      foundContactId = res.data.id;
+      document.getElementById('helloBox').innerHTML = `¡Hola, <strong>${res.data.nombre}</strong>! Ya tenemos tu registro.`;
+      showCard('cardEncontrado');
+    } else {
+      document.getElementById('n_telHidden') // no-op, el teléfono se reusa desde p_tel
+      showCard('cardNuevo');
+    }
+  });
+});
+
+document.getElementById('btnNoSoyYo').addEventListener('click', ()=>{
+  foundContactId = null;
+  document.getElementById('p_tel').value = '+56 ';
+  showCard('cardTelefono');
+});
+document.getElementById('btnCambiarTel').addEventListener('click', ()=>{
+  document.getElementById('p_tel').value = '+56 ';
+  showCard('cardTelefono');
+});
+
+// ---- PASO 2A: agendar contacto existente ----
+document.getElementById('formAgendarExistente').addEventListener('submit', e=>{
+  e.preventDefault();
+  clearError();
+  const sucursal = document.getElementById('x_sucursal').value;
+  const fecha = document.getElementById('x_fecha').value;
+  const hora = document.getElementById('x_hora').value;
+  if(!sucursal || !fecha || !hora){ showError('Completa sucursal, fecha y hora.'); return; }
+
+  const btn = document.getElementById('btnAgendarExistente');
+  btn.disabled = true;
+  apiPost({action:'schedule', id: foundContactId, date: fecha, time: hora, duration: 30, sucursal}).then(res=>{
+    if(res.ok){
+      mostrarConfirmacion(sucursal, fecha, hora);
+    } else {
+      showError('No se pudo agendar: ' + res.error);
+    }
+  }).finally(()=>{ btn.disabled = false; });
+});
+
+// ---- PASO 2B: crear contacto nuevo + agendar ----
+document.getElementById('formNuevo').addEventListener('submit', e=>{
+  e.preventDefault();
+  clearError();
+  const nombre = document.getElementById('n_nombre').value.trim();
+  const correo = document.getElementById('n_correo').value.trim();
+  const sucursal = document.getElementById('n_sucursal').value;
+  const fecha = document.getElementById('n_fecha').value;
+  const hora = document.getElementById('n_hora').value;
+  if(!nombre || !correo){ showError('Completa nombre y correo.'); return; }
+  if(!sucursal || !fecha || !hora){ showError('Completa sucursal, fecha y hora.'); return; }
+
+  const data = {
+    nombre,
+    apellidoPaterno: document.getElementById('n_apP').value.trim(),
+    apellidoMaterno: document.getElementById('n_apM').value.trim(),
+    telefono: normalizarTelefonoParaGuardar(document.getElementById('p_tel').value),
+    correo,
+    fuente: 'Página web',
+    notas: '',
+    agregadoPor: 'Página web (autoservicio)'
+  };
+
+  const btn = document.getElementById('btnAgendarNuevo');
+  btn.disabled = true;
+  apiPost({action:'add', data}).then(res=>{
+    if(!res.ok){ showError('No se pudo crear tu registro: ' + res.error); return null; }
+    return apiPost({action:'schedule', id: res.data.id, date: fecha, time: hora, duration: 30, sucursal});
+  }).then(schedRes=>{
+    if(schedRes === null) return;
+    if(schedRes.ok){
+      mostrarConfirmacion(sucursal, fecha, hora);
+    } else {
+      showError('Tu registro se creó, pero no se pudo agendar la cita: ' + schedRes.error);
+    }
+  }).finally(()=>{ btn.disabled = false; });
+});
+
+function mostrarConfirmacion(sucursal, fecha, hora){
+  document.getElementById('conf_sucursal').textContent = sucursal;
+  document.getElementById('conf_fecha').textContent = fecha;
+  const opt = document.querySelector(`#x_hora option[value="${hora}"], #n_hora option[value="${hora}"]`);
+  document.getElementById('conf_hora').textContent = opt ? opt.textContent : hora;
+  showCard('cardConfirmacion');
+}
+</script>
+</body>
+</html>
