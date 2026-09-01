@@ -350,17 +350,22 @@ const STATUS_COLORS = {
   'No compró': 'var(--st-no-compro)',
   'Compró': 'var(--st-compro)'
 };
-// Bloques de cita de una hora exacta (no minutos libres). Ajusta HORA_INICIO/HORA_FIN
+// Bloques de cita cada 30 minutos. Ajusta HORA_INICIO/HORA_FIN/INTERVALO_MINUTOS
 // si el horario de atención de la tienda cambia.
 const HORA_INICIO = 9;  // 9:00 a.m.
 const HORA_FIN = 20;    // 8:00 p.m. (última cita del día)
+const INTERVALO_MINUTOS = 30; // 30 = cada media hora, 60 = cada hora
 function generarOpcionesHora(){
   let html = '';
   for(let h = HORA_INICIO; h <= HORA_FIN; h++){
-    const value = String(h).padStart(2,'0') + ':00';
-    const ampm = h < 12 ? 'a.m.' : 'p.m.';
-    let h12 = h % 12; if(h12 === 0) h12 = 12;
-    html += `<option value="${value}">${h12}:00 ${ampm}</option>`;
+    for(let m = 0; m < 60; m += INTERVALO_MINUTOS){
+      if(h === HORA_FIN && m > 0) continue; // no pasar la última cita del día
+      const value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+      const ampm = h < 12 ? 'a.m.' : 'p.m.';
+      let h12 = h % 12; if(h12 === 0) h12 = 12;
+      const mm = String(m).padStart(2,'0');
+      html += `<option value="${value}">${h12}:${mm} ${ampm}</option>`;
+    }
   }
   return html;
 }
