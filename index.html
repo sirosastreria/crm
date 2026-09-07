@@ -494,7 +494,7 @@ function renderList(){
     const matchesStatus = activeStatusFilter==='Todos' || c['Estatus']===activeStatusFilter;
     const full = (c['Nombre']+' '+c['Apellido Paterno']+' '+c['Apellido Materno']+' '+c['Teléfono']).toLowerCase();
     const matchesQ = !q || full.includes(q);
-    const matchesCita = activeCitaFilter==='Todos' || !!c['Fecha Cita'];
+    const matchesCita = activeCitaFilter==='Todos' || (!!c['Fecha Cita'] && c['Estatus'] === 'Pendiente');
     const matchesSucursal = activeSucursalFilter==='Todas' || c['Sucursal']===activeSucursalFilter;
     return matchesStatus && matchesQ && matchesCita && matchesSucursal;
   });
