@@ -418,6 +418,22 @@ function normalizarTexto(s){
   return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 }
 
+// Da la fecha y hora actuales en la zona horaria del negocio (America/Santiago),
+// para no dejar agendar citas en el pasado sin importar desde qué zona horaria
+// esté usando la app quien la abre.
+function obtenerAhoraChile(){
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  });
+  const partes = fmt.formatToParts(new Date());
+  const obtener = t => partes.find(p => p.type === t).value;
+  const fecha = `${obtener('year')}-${obtener('month')}-${obtener('day')}`;
+  const minutosDelDia = Number(obtener('hour')) * 60 + Number(obtener('minute'));
+  return { fecha, minutosDelDia };
+}
+
 function identificarSucursal(sucursal){
   const n = normalizarTexto(sucursal);
   if(!n) return null;
@@ -456,26 +472,35 @@ function generarOpcionesHora(sucursal, fechaStr){
   if(!sucursal || !fechaStr){
     return '<option value="">Selecciona sucursal y fecha primero</option>';
   }
+  const ahora = obtenerAhoraChile();
+  if(fechaStr < ahora.fecha){
+    return '<option value="">No se puede agendar en una fecha que ya pasó</option>';
+  }
   const rangos = obtenerRangosHorario(sucursal, fechaStr);
   if(!rangos || !rangos.length){
     return '<option value="">Sucursal cerrada este día</option>';
   }
-  let html = '<option value="">Selecciona una hora</option>';
+  let opciones = '';
   rangos.forEach(([inicio, fin])=>{
     const [hIni, mIni] = inicio.split(':').map(Number);
     const [hFin, mFin] = fin.split(':').map(Number);
     const totalIni = hIni * 60 + mIni;
     const totalFin = hFin * 60 + mFin;
     for(let t = totalIni; t <= totalFin; t += INTERVALO_MINUTOS){
+      // No ofrecer horas que ya pasaron cuando la fecha elegida es hoy.
+      if(fechaStr === ahora.fecha && t <= ahora.minutosDelDia) continue;
       const h = Math.floor(t / 60), m = t % 60;
       const value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
       const ampm = h < 12 ? 'a.m.' : 'p.m.';
       let h12 = h % 12; if(h12 === 0) h12 = 12;
       const mm = String(m).padStart(2,'0');
-      html += `<option value="${value}">${h12}:${mm} ${ampm}</option>`;
+      opciones += `<option value="${value}">${h12}:${mm} ${ampm}</option>`;
     }
   });
-  return html;
+  if(!opciones){
+    return '<option value="">No quedan horas disponibles ese día</option>';
+  }
+  return '<option value="">Selecciona una hora</option>' + opciones;
 }
 
 function telHref(tel){
@@ -712,6 +737,10 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
   const citaFecha = document.getElementById('f_cita_fecha').value;
   const citaHora = document.getElementById('f_cita_hora').value;
   const quiereAgendar = !!(citaSucursal || citaOcasion || citaFecha || citaHora);
+  if(quiereAgendar && citaFecha && citaFecha < obtenerAhoraChile().fecha){
+    toast('No puedes agendar en una fecha que ya pasó');
+    return;
+  }
   if(quiereAgendar && (!citaSucursal || !citaOcasion || !citaFecha || !citaHora)){
     toast('Para agendar la cita, completa sucursal, ocasión, fecha y hora (o deja todo vacío)');
     return;
@@ -859,6 +888,7 @@ function openDetail(id){
     const fecha = document.getElementById('det_fecha').value;
     document.getElementById('det_hora').innerHTML = generarOpcionesHora(suc, fecha);
   }
+  document.getElementById('det_fecha').min = obtenerAhoraChile().fecha;
   document.getElementById('det_sucursal').addEventListener('change', actualizarHorasDetalle);
   document.getElementById('det_fecha').addEventListener('change', actualizarHorasDetalle);
   actualizarHorasDetalle();
@@ -886,6 +916,7 @@ function openDetail(id){
     const sucursal = document.getElementById('det_sucursal').value;
     const ocasion = document.getElementById('det_ocasion').value;
     if(!date || !time){ toast('Elige fecha y hora'); return; }
+    if(date < obtenerAhoraChile().fecha){ toast('No puedes agendar en una fecha que ya pasó'); return; }
     if(!sucursal){ toast('Elige una sucursal'); return; }
     if(!ocasion){ toast('Elige una ocasión'); return; }
     apiPost({action:'schedule', id, date, time, duration:30, sucursal, ocasion}).then(res=>{
@@ -928,6 +959,7 @@ window.addEventListener('hashchange', ()=>{
   }
 });
 
+document.getElementById('f_cita_fecha').min = obtenerAhoraChile().fecha;
 actualizarHorasNuevo();
 renderChips();
 renderCitaChips();
