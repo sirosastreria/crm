@@ -261,6 +261,22 @@ function normalizarTexto(s){
   return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 }
 
+// Da la fecha y hora actuales en la zona horaria del negocio (America/Santiago),
+// para no dejar agendar citas en el pasado sin importar desde qué zona horaria
+// esté usando la app quien la abre.
+function obtenerAhoraChile(){
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  });
+  const partes = fmt.formatToParts(new Date());
+  const obtener = t => partes.find(p => p.type === t).value;
+  const fecha = `${obtener('year')}-${obtener('month')}-${obtener('day')}`;
+  const minutosDelDia = Number(obtener('hour')) * 60 + Number(obtener('minute'));
+  return { fecha, minutosDelDia };
+}
+
 function identificarSucursal(sucursal){
   const n = normalizarTexto(sucursal);
   if(!n) return null;
@@ -299,26 +315,35 @@ function generarOpcionesHora(sucursal, fechaStr){
   if(!sucursal || !fechaStr){
     return '<option value="">Selecciona sucursal y fecha primero</option>';
   }
+  const ahora = obtenerAhoraChile();
+  if(fechaStr < ahora.fecha){
+    return '<option value="">No se puede agendar en una fecha que ya pasó</option>';
+  }
   const rangos = obtenerRangosHorario(sucursal, fechaStr);
   if(!rangos || !rangos.length){
     return '<option value="">Sucursal cerrada este día</option>';
   }
-  let html = '<option value="">Selecciona una hora</option>';
+  let opciones = '';
   rangos.forEach(([inicio, fin])=>{
     const [hIni, mIni] = inicio.split(':').map(Number);
     const [hFin, mFin] = fin.split(':').map(Number);
     const totalIni = hIni * 60 + mIni;
     const totalFin = hFin * 60 + mFin;
     for(let t = totalIni; t <= totalFin; t += INTERVALO_MINUTOS){
+      // No ofrecer horas que ya pasaron cuando la fecha elegida es hoy.
+      if(fechaStr === ahora.fecha && t <= ahora.minutosDelDia) continue;
       const h = Math.floor(t / 60), m = t % 60;
       const value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
       const ampm = h < 12 ? 'a.m.' : 'p.m.';
       let h12 = h % 12; if(h12 === 0) h12 = 12;
       const mm = String(m).padStart(2,'0');
-      html += `<option value="${value}">${h12}:${mm} ${ampm}</option>`;
+      opciones += `<option value="${value}">${h12}:${mm} ${ampm}</option>`;
     }
   });
-  return html;
+  if(!opciones){
+    return '<option value="">No quedan horas disponibles ese día</option>';
+  }
+  return '<option value="">Selecciona una hora</option>' + opciones;
 }
 
 function normalizarTelefonoParaGuardar(tel){
@@ -384,6 +409,7 @@ function actualizarHorasExistente(){
   const fecha = document.getElementById('x_fecha').value;
   document.getElementById('x_hora').innerHTML = generarOpcionesHora(suc, fecha);
 }
+document.getElementById('x_fecha').min = obtenerAhoraChile().fecha;
 document.getElementById('x_sucursal').addEventListener('change', actualizarHorasExistente);
 document.getElementById('x_fecha').addEventListener('change', actualizarHorasExistente);
 
@@ -393,6 +419,7 @@ function actualizarHorasNuevo(){
   const fecha = document.getElementById('n_fecha').value;
   document.getElementById('n_hora').innerHTML = generarOpcionesHora(suc, fecha);
 }
+document.getElementById('n_fecha').min = obtenerAhoraChile().fecha;
 document.getElementById('n_sucursal').addEventListener('change', actualizarHorasNuevo);
 document.getElementById('n_fecha').addEventListener('change', actualizarHorasNuevo);
 
@@ -435,6 +462,7 @@ document.getElementById('formAgendarExistente').addEventListener('submit', e=>{
   const fecha = document.getElementById('x_fecha').value;
   const hora = document.getElementById('x_hora').value;
   if(!sucursal || !ocasion || !fecha || !hora){ showError('Completa sucursal, ocasión, fecha y hora.'); return; }
+  if(fecha < obtenerAhoraChile().fecha){ showError('No puedes agendar en una fecha que ya pasó.'); return; }
 
   const btn = document.getElementById('btnAgendarExistente');
   btn.disabled = true;
@@ -459,6 +487,7 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
   const hora = document.getElementById('n_hora').value;
   if(!nombre || !correo){ showError('Completa nombre y correo.'); return; }
   if(!sucursal || !ocasion || !fecha || !hora){ showError('Completa sucursal, ocasión, fecha y hora.'); return; }
+  if(fecha < obtenerAhoraChile().fecha){ showError('No puedes agendar en una fecha que ya pasó.'); return; }
 
   const data = {
     nombre,
