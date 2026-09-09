@@ -130,8 +130,18 @@
     <div class="step-title">Elige sucursal, fecha y hora</div>
     <form class="stack" id="formAgendarExistente">
       <div class="field"><label>Sucursal</label><select id="x_sucursal"><option value="">Selecciona una sucursal</option></select></div>
+      <div class="field">
+        <label>Ocasión</label>
+        <select id="x_ocasion" required>
+          <option value="">Selecciona una ocasión</option>
+          <option value="Novio">Novio</option>
+          <option value="Invitado a boda">Invitado a boda</option>
+          <option value="Graduados">Graduados</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
       <div class="field"><label>Fecha</label><input type="date" id="x_fecha" required></div>
-      <div class="field"><label>Hora</label><select id="x_hora" required><option value="">Selecciona una hora</option></select></div>
+      <div class="field"><label>Hora</label><select id="x_hora" required><option value="">Selecciona sucursal y fecha primero</option></select></div>
       <button type="submit" class="btn btn-amber" id="btnAgendarExistente">Agendar</button>
       <button type="button" class="btn btn-ghost" id="btnNoSoyYo">No soy yo / usar otro teléfono</button>
     </form>
@@ -149,8 +159,18 @@
       </div>
       <div class="field"><label>Correo</label><input type="email" id="n_correo" required></div>
       <div class="field"><label>Sucursal</label><select id="n_sucursal"><option value="">Selecciona una sucursal</option></select></div>
+      <div class="field">
+        <label>Ocasión</label>
+        <select id="n_ocasion" required>
+          <option value="">Selecciona una ocasión</option>
+          <option value="Novio">Novio</option>
+          <option value="Invitado a boda">Invitado a boda</option>
+          <option value="Graduados">Graduados</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
       <div class="field"><label>Fecha</label><input type="date" id="n_fecha" required></div>
-      <div class="field"><label>Hora</label><select id="n_hora" required><option value="">Selecciona una hora</option></select></div>
+      <div class="field"><label>Hora</label><select id="n_hora" required><option value="">Selecciona sucursal y fecha primero</option></select></div>
       <button type="submit" class="btn btn-amber" id="btnAgendarNuevo">Crear registro y agendar</button>
       <button type="button" class="btn btn-ghost" id="btnCambiarTel">Usar otro teléfono</button>
     </form>
@@ -162,6 +182,7 @@
       <div class="check">✅</div>
       <h2>¡Listo, quedaste agendado!</h2>
       <p>Sucursal: <span class="detail" id="conf_sucursal"></span></p>
+      <p>Ocasión: <span class="detail" id="conf_ocasion"></span></p>
       <p>Fecha: <span class="detail" id="conf_fecha"></span></p>
       <p>Hora: <span class="detail" id="conf_hora"></span></p>
     </div>
@@ -182,16 +203,121 @@
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-IUnnJN1BHCT1uv6X7lLX5QGPz6IjuqrtamQH2c1nITL4lYL_yCtj9gsoDOwXAhOWSw/exec';
 /* ============================================================== */
 
-const HORA_INICIO = 9;
-const HORA_FIN = 20;
-function generarOpcionesHora(){
-  let html = '';
-  for(let h = HORA_INICIO; h <= HORA_FIN; h++){
-    const value = String(h).padStart(2,'0') + ':00';
-    const ampm = h < 12 ? 'a.m.' : 'p.m.';
-    let h12 = h % 12; if(h12 === 0) h12 = 12;
-    html += `<option value="${value}">${h12}:00 ${ampm}</option>`;
+// Bloques de cita cada 30 minutos para todas las sucursales.
+const INTERVALO_MINUTOS = 30; // 30 = cada media hora, 60 = cada hora
+
+// ===== Horarios de atención por sucursal =====
+// Cada horario está definido por día de la semana según Date.getDay():
+// 0 = domingo, 1 = lunes, 2 = martes, 3 = miércoles, 4 = jueves, 5 = viernes, 6 = sábado.
+// Cada día puede tener uno o más rangos ['HH:MM','HH:MM']. Si un día no aparece
+// (o obtenerRangosHorario decide que está cerrado), no se ofrecen horas ese día.
+// (Mismos horarios configurados en la bitácora interna — mantener sincronizados.)
+
+const CASA_MATRIZ_HORARIO = {
+  1: [['13:00','18:00']], // lunes
+  2: [['10:30','18:00']], // martes
+  3: [['10:30','18:00']], // miércoles (idem martes)
+  4: [['10:30','18:00']], // jueves (idem martes)
+  5: [['10:30','13:00']]  // viernes
+  // sábado: bloqueado (ver obtenerRangosHorario) · domingo: cerrado
+};
+// Sábados de Casa Matriz bloqueados hasta esta fecha. Por ahora se dejan
+// cerrados indefinidamente después de esta fecha también, porque aún no se
+// definió un horario de sábado para Casa Matriz — cuando se defina, agrega
+// una entrada 6: [['HH:MM','HH:MM']] a CASA_MATRIZ_HORARIO y ajusta
+// obtenerRangosHorario() para usarla a partir de esta fecha.
+const CASA_MATRIZ_SABADO_BLOQUEADO_HASTA = new Date('2027-01-01T00:00:00');
+
+const APUMANQUE_HORARIO = {
+  0: [['11:00','19:00']], // domingo
+  1: [['11:00','19:00']], // lunes
+  2: [['11:00','19:00']], // martes
+  3: [['11:00','19:00']], // miércoles
+  4: [['11:00','19:00']], // jueves
+  5: [['11:00','19:00']], // viernes
+  6: [['11:00','19:00']]  // sábado
+  // TODO: horario de colación por definir. Cuando se defina, reemplaza el
+  // rango de cada día por dos rangos que la excluyan, ej:
+  // 1: [['11:00','14:00'], ['15:00','19:00']]
+};
+
+const GALERIA_EDWARDS_HORARIO = {
+  1: [['10:00','17:00']], // lunes
+  2: [['10:00','17:00']], // martes
+  3: [['10:00','17:00']], // miércoles
+  4: [['10:00','17:00']], // jueves
+  5: [['10:00','17:00']], // viernes
+  6: [['10:00','13:00']]  // sábado
+  // domingo: cerrado
+};
+
+// Horario genérico de respaldo para cualquier sucursal que aún no tenga
+// horario propio configurado arriba (mantiene el comportamiento anterior).
+const HORARIO_GENERICO_DEFECTO = [['09:00','20:00']];
+
+// Quita acentos y pasa a minúsculas para poder comparar nombres de sucursal
+// sin depender de mayúsculas/tildes exactas que vengan del backend.
+function normalizarTexto(s){
+  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+}
+
+function identificarSucursal(sucursal){
+  const n = normalizarTexto(sucursal);
+  if(!n) return null;
+  if(n.includes('matriz')) return 'casa_matriz';
+  if(n.includes('apumanque')) return 'apumanque';
+  if(n.includes('agustin') || n.includes('edwards') || n.includes('galeria')) return 'galeria_edwards';
+  return null;
+}
+
+// Devuelve los rangos horarios [['HH:MM','HH:MM'], ...] disponibles para una
+// sucursal en una fecha (string 'YYYY-MM-DD'), o null si ese día está cerrado.
+function obtenerRangosHorario(sucursal, fechaStr){
+  if(!sucursal || !fechaStr) return null;
+  const fecha = new Date(fechaStr + 'T00:00:00');
+  if(isNaN(fecha.getTime())) return null;
+  const dia = fecha.getDay();
+  const key = identificarSucursal(sucursal);
+
+  if(key === 'casa_matriz'){
+    if(dia === 0) return null; // domingo cerrado
+    if(dia === 6) return null; // sábado bloqueado (ver CASA_MATRIZ_SABADO_BLOQUEADO_HASTA)
+    return CASA_MATRIZ_HORARIO[dia] || null;
   }
+  if(key === 'apumanque'){
+    return APUMANQUE_HORARIO[dia] || null;
+  }
+  if(key === 'galeria_edwards'){
+    if(dia === 0) return null; // domingo cerrado
+    return GALERIA_EDWARDS_HORARIO[dia] || null;
+  }
+  // Sucursal aún no configurada arriba: usar horario genérico de respaldo.
+  return HORARIO_GENERICO_DEFECTO;
+}
+
+function generarOpcionesHora(sucursal, fechaStr){
+  if(!sucursal || !fechaStr){
+    return '<option value="">Selecciona sucursal y fecha primero</option>';
+  }
+  const rangos = obtenerRangosHorario(sucursal, fechaStr);
+  if(!rangos || !rangos.length){
+    return '<option value="">Sucursal cerrada este día</option>';
+  }
+  let html = '<option value="">Selecciona una hora</option>';
+  rangos.forEach(([inicio, fin])=>{
+    const [hIni, mIni] = inicio.split(':').map(Number);
+    const [hFin, mFin] = fin.split(':').map(Number);
+    const totalIni = hIni * 60 + mIni;
+    const totalFin = hFin * 60 + mFin;
+    for(let t = totalIni; t <= totalFin; t += INTERVALO_MINUTOS){
+      const h = Math.floor(t / 60), m = t % 60;
+      const value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+      const ampm = h < 12 ? 'a.m.' : 'p.m.';
+      let h12 = h % 12; if(h12 === 0) h12 = 12;
+      const mm = String(m).padStart(2,'0');
+      html += `<option value="${value}">${h12}:${mm} ${ampm}</option>`;
+    }
+  });
   return html;
 }
 
@@ -251,8 +377,24 @@ apiGet({action:'team'}).then(res=>{
     document.getElementById('n_sucursal').innerHTML = opts;
   }
 });
-document.getElementById('x_hora').innerHTML = '<option value="">Selecciona una hora</option>' + generarOpcionesHora();
-document.getElementById('n_hora').innerHTML = '<option value="">Selecciona una hora</option>' + generarOpcionesHora();
+
+// ---- Horas dinámicas según sucursal + fecha (contacto existente) ----
+function actualizarHorasExistente(){
+  const suc = document.getElementById('x_sucursal').value;
+  const fecha = document.getElementById('x_fecha').value;
+  document.getElementById('x_hora').innerHTML = generarOpcionesHora(suc, fecha);
+}
+document.getElementById('x_sucursal').addEventListener('change', actualizarHorasExistente);
+document.getElementById('x_fecha').addEventListener('change', actualizarHorasExistente);
+
+// ---- Horas dinámicas según sucursal + fecha (contacto nuevo) ----
+function actualizarHorasNuevo(){
+  const suc = document.getElementById('n_sucursal').value;
+  const fecha = document.getElementById('n_fecha').value;
+  document.getElementById('n_hora').innerHTML = generarOpcionesHora(suc, fecha);
+}
+document.getElementById('n_sucursal').addEventListener('change', actualizarHorasNuevo);
+document.getElementById('n_fecha').addEventListener('change', actualizarHorasNuevo);
 
 // ---- PASO 1: buscar por teléfono ----
 document.getElementById('formTelefono').addEventListener('submit', e=>{
@@ -289,15 +431,16 @@ document.getElementById('formAgendarExistente').addEventListener('submit', e=>{
   e.preventDefault();
   clearError();
   const sucursal = document.getElementById('x_sucursal').value;
+  const ocasion = document.getElementById('x_ocasion').value;
   const fecha = document.getElementById('x_fecha').value;
   const hora = document.getElementById('x_hora').value;
-  if(!sucursal || !fecha || !hora){ showError('Completa sucursal, fecha y hora.'); return; }
+  if(!sucursal || !ocasion || !fecha || !hora){ showError('Completa sucursal, ocasión, fecha y hora.'); return; }
 
   const btn = document.getElementById('btnAgendarExistente');
   btn.disabled = true;
-  apiPost({action:'schedule', id: foundContactId, date: fecha, time: hora, duration: 30, sucursal}).then(res=>{
+  apiPost({action:'schedule', id: foundContactId, date: fecha, time: hora, duration: 30, sucursal, ocasion}).then(res=>{
     if(res.ok){
-      mostrarConfirmacion(sucursal, fecha, hora);
+      mostrarConfirmacion(sucursal, ocasion, fecha, hora);
     } else {
       showError('No se pudo agendar: ' + res.error);
     }
@@ -311,10 +454,11 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
   const nombre = document.getElementById('n_nombre').value.trim();
   const correo = document.getElementById('n_correo').value.trim();
   const sucursal = document.getElementById('n_sucursal').value;
+  const ocasion = document.getElementById('n_ocasion').value;
   const fecha = document.getElementById('n_fecha').value;
   const hora = document.getElementById('n_hora').value;
   if(!nombre || !correo){ showError('Completa nombre y correo.'); return; }
-  if(!sucursal || !fecha || !hora){ showError('Completa sucursal, fecha y hora.'); return; }
+  if(!sucursal || !ocasion || !fecha || !hora){ showError('Completa sucursal, ocasión, fecha y hora.'); return; }
 
   const data = {
     nombre,
@@ -331,19 +475,20 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
   btn.disabled = true;
   apiPost({action:'add', data}).then(res=>{
     if(!res.ok){ showError('No se pudo crear tu registro: ' + res.error); return null; }
-    return apiPost({action:'schedule', id: res.data.id, date: fecha, time: hora, duration: 30, sucursal});
+    return apiPost({action:'schedule', id: res.data.id, date: fecha, time: hora, duration: 30, sucursal, ocasion});
   }).then(schedRes=>{
     if(schedRes === null) return;
     if(schedRes.ok){
-      mostrarConfirmacion(sucursal, fecha, hora);
+      mostrarConfirmacion(sucursal, ocasion, fecha, hora);
     } else {
       showError('Tu registro se creó, pero no se pudo agendar la cita: ' + schedRes.error);
     }
   }).finally(()=>{ btn.disabled = false; });
 });
 
-function mostrarConfirmacion(sucursal, fecha, hora){
+function mostrarConfirmacion(sucursal, ocasion, fecha, hora){
   document.getElementById('conf_sucursal').textContent = sucursal;
+  document.getElementById('conf_ocasion').textContent = ocasion;
   document.getElementById('conf_fecha').textContent = fecha;
   const opt = document.querySelector(`#x_hora option[value="${hora}"], #n_hora option[value="${hora}"]`);
   document.getElementById('conf_hora').textContent = opt ? opt.textContent : hora;
