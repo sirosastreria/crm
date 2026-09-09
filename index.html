@@ -214,6 +214,25 @@
   }
   .spinner-box span{ font-size:13.5px; font-weight:700; color:var(--ink-soft); }
   @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .dp-wrap{ position:relative; }
+  .datepicker-popup{
+    position:absolute; top:calc(100% + 6px); left:0; z-index:50;
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.16); padding:12px; width:270px;
+  }
+  .dp-header{ display:flex; align-items:center; justify-content:space-between; font-weight:800; font-size:13.5px; margin-bottom:8px; }
+  .dp-nav{ background:var(--paper); border:1px solid var(--line); border-radius:8px; width:28px; height:28px; font-size:15px; color:var(--ink); cursor:pointer; }
+  .dp-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); font-size:10.5px; font-weight:700; color:var(--ink-soft); text-align:center; margin-bottom:4px; }
+  .dp-days{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+  .dp-day{
+    aspect-ratio:1; border:none; border-radius:8px; background:transparent; color:var(--ink);
+    font-size:12.5px; cursor:pointer;
+  }
+  .dp-day:hover:not(:disabled){ background:var(--paper); }
+  .dp-day-sel{ background:var(--teal) !important; color:#fff !important; font-weight:800; }
+  .dp-day-disabled{ color:var(--line); cursor:not-allowed; }
+  .dp-hint{ font-size:11.5px; color:var(--ink-soft); margin-top:8px; text-align:center; }
 </style>
 </head>
 <body>
@@ -478,7 +497,7 @@ function generarOpcionesHora(sucursal, fechaStr){
   }
   const rangos = obtenerRangosHorario(sucursal, fechaStr);
   if(!rangos || !rangos.length){
-    return '<option value="">Sucursal cerrada este día</option>';
+    return '<option value="">No hay horarios disponibles este día</option>';
   }
   let opciones = '';
   rangos.forEach(([inicio, fin])=>{
@@ -501,6 +520,114 @@ function generarOpcionesHora(sucursal, fechaStr){
     return '<option value="">No quedan horas disponibles ese día</option>';
   }
   return '<option value="">Selecciona una hora</option>' + opciones;
+}
+
+// ===== Mini calendario propio para elegir fecha =====
+// Reemplaza el <input type="date"> nativo (que no permite deshabilitar días de la
+// semana específicos) por un calendario propio: los días sin ningún horario
+// disponible para la sucursal elegida (ya sea porque ya pasaron o porque esa
+// sucursal no atiende/no tiene cupo ese día) aparecen apagados y no se pueden
+// elegir, en vez de dejar seleccionarlos y recién avisar después.
+const DIAS_SEMANA_ES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const MESES_LARGO_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function pad2(n){ return String(n).padStart(2,'0'); }
+function fechaAString(y, mIdx, d){ return `${y}-${pad2(mIdx+1)}-${pad2(d)}`; }
+
+// inputEl: el campo de fecha (se convierte a solo-lectura con calendario propio).
+// obtenerSucursalActual: función que devuelve el valor actual del select de sucursal.
+function crearSelectorFecha(inputEl, obtenerSucursalActual){
+  inputEl.type = 'text';
+  inputEl.readOnly = true;
+  inputEl.placeholder = 'Selecciona una fecha';
+  inputEl.autocomplete = 'off';
+  inputEl.style.cursor = 'pointer';
+  inputEl.style.background = 'var(--card)';
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'dp-wrap';
+  inputEl.parentNode.insertBefore(wrapper, inputEl);
+  wrapper.appendChild(inputEl);
+
+  const popup = document.createElement('div');
+  popup.className = 'datepicker-popup';
+  popup.style.display = 'none';
+  wrapper.appendChild(popup);
+
+  const ahora = obtenerAhoraChile();
+  let vistaAnio = Number(ahora.fecha.slice(0, 4));
+  let vistaMes = Number(ahora.fecha.slice(5, 7)) - 1; // 0-indexado
+
+  function render(){
+    const sucursal = obtenerSucursalActual();
+    const primerDiaSemana = (new Date(vistaAnio, vistaMes, 1).getDay() + 6) % 7; // 0 = lunes
+    const diasEnMes = new Date(vistaAnio, vistaMes + 1, 0).getDate();
+
+    let html = `
+      <div class="dp-header">
+        <button type="button" class="dp-nav" data-dir="-1">‹</button>
+        <span>${MESES_LARGO_ES[vistaMes]} ${vistaAnio}</span>
+        <button type="button" class="dp-nav" data-dir="1">›</button>
+      </div>
+      <div class="dp-weekdays">${DIAS_SEMANA_ES.map(d => `<span>${d}</span>`).join('')}</div>
+      <div class="dp-days">`;
+    for(let i = 0; i < primerDiaSemana; i++) html += `<span></span>`;
+    for(let d = 1; d <= diasEnMes; d++){
+      const fechaStr = fechaAString(vistaAnio, vistaMes, d);
+      const disponible = !!sucursal && fechaStr >= ahora.fecha && !!obtenerRangosHorario(sucursal, fechaStr);
+      const seleccionado = fechaStr === inputEl.value;
+      html += `<button type="button" class="dp-day${disponible ? '' : ' dp-day-disabled'}${seleccionado ? ' dp-day-sel' : ''}" ${disponible ? `data-fecha="${fechaStr}"` : 'disabled'}>${d}</button>`;
+    }
+    html += `</div>`;
+    if(!sucursal){
+      html += `<div class="dp-hint">Elige una sucursal para ver los días disponibles.</div>`;
+    }
+    popup.innerHTML = html;
+
+    popup.querySelectorAll('.dp-nav').forEach(btn => {
+      btn.addEventListener('click', () => {
+        vistaMes += Number(btn.dataset.dir);
+        if(vistaMes < 0){ vistaMes = 11; vistaAnio--; }
+        if(vistaMes > 11){ vistaMes = 0; vistaAnio++; }
+        render();
+      });
+    });
+    popup.querySelectorAll('.dp-day[data-fecha]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        inputEl.value = btn.dataset.fecha;
+        popup.style.display = 'none';
+        inputEl.dispatchEvent(new Event('change'));
+      });
+    });
+  }
+
+  inputEl.addEventListener('click', () => {
+    render();
+    popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+  });
+  inputEl.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter' || e.key === ' '){
+      e.preventDefault();
+      render();
+      popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if(!wrapper.contains(e.target)) popup.style.display = 'none';
+  });
+
+  return {
+    refrescar: render,
+    // Si la fecha ya elegida deja de tener horario disponible (por ejemplo, cambiaron
+    // de sucursal), la limpia para que no quede seleccionada una fecha inválida.
+    limpiarSiInvalida(){
+      const sucursal = obtenerSucursalActual();
+      if(inputEl.value && (!sucursal || !obtenerRangosHorario(sucursal, inputEl.value) || inputEl.value < ahora.fecha)){
+        inputEl.value = '';
+        inputEl.dispatchEvent(new Event('change'));
+      }
+    }
+  };
 }
 
 function telHref(tel){
@@ -712,7 +839,12 @@ function actualizarHorasNuevo(){
   const fecha = document.getElementById('f_cita_fecha').value;
   document.getElementById('f_cita_hora').innerHTML = generarOpcionesHora(suc, fecha);
 }
-document.getElementById('f_cita_sucursal').addEventListener('change', actualizarHorasNuevo);
+const selectorFCitaFecha = crearSelectorFecha(document.getElementById('f_cita_fecha'), () => document.getElementById('f_cita_sucursal').value);
+document.getElementById('f_cita_sucursal').addEventListener('change', () => {
+  selectorFCitaFecha.limpiarSiInvalida();
+  selectorFCitaFecha.refrescar();
+  actualizarHorasNuevo();
+});
 document.getElementById('f_cita_fecha').addEventListener('change', actualizarHorasNuevo);
 
 document.getElementById('formNuevo').addEventListener('submit', e=>{
@@ -888,8 +1020,12 @@ function openDetail(id){
     const fecha = document.getElementById('det_fecha').value;
     document.getElementById('det_hora').innerHTML = generarOpcionesHora(suc, fecha);
   }
-  document.getElementById('det_fecha').min = obtenerAhoraChile().fecha;
-  document.getElementById('det_sucursal').addEventListener('change', actualizarHorasDetalle);
+  const selectorDetFecha = crearSelectorFecha(document.getElementById('det_fecha'), () => document.getElementById('det_sucursal').value);
+  document.getElementById('det_sucursal').addEventListener('change', () => {
+    selectorDetFecha.limpiarSiInvalida();
+    selectorDetFecha.refrescar();
+    actualizarHorasDetalle();
+  });
   document.getElementById('det_fecha').addEventListener('change', actualizarHorasDetalle);
   actualizarHorasDetalle();
 
@@ -959,7 +1095,6 @@ window.addEventListener('hashchange', ()=>{
   }
 });
 
-document.getElementById('f_cita_fecha').min = obtenerAhoraChile().fecha;
 actualizarHorasNuevo();
 renderChips();
 renderCitaChips();
