@@ -350,23 +350,121 @@ const STATUS_COLORS = {
   'No compró': 'var(--st-no-compro)',
   'Compró': 'var(--st-compro)'
 };
-// Bloques de cita cada 30 minutos. Ajusta HORA_INICIO/HORA_FIN/INTERVALO_MINUTOS
-// si el horario de atención de la tienda cambia.
-const HORA_INICIO = 9;  // 9:00 a.m.
-const HORA_FIN = 20;    // 8:00 p.m. (última cita del día)
+// Bloques de cita cada 30 minutos para todas las sucursales.
+// Ajusta INTERVALO_MINUTOS si el tamaño del bloque cambia.
 const INTERVALO_MINUTOS = 30; // 30 = cada media hora, 60 = cada hora
-function generarOpcionesHora(){
-  let html = '';
-  for(let h = HORA_INICIO; h <= HORA_FIN; h++){
-    for(let m = 0; m < 60; m += INTERVALO_MINUTOS){
-      if(h === HORA_FIN && m > 0) continue; // no pasar la última cita del día
+
+// ===== Horarios de atención por sucursal =====
+// Cada horario está definido por día de la semana según Date.getDay():
+// 0 = domingo, 1 = lunes, 2 = martes, 3 = miércoles, 4 = jueves, 5 = viernes, 6 = sábado.
+// Cada día puede tener uno o más rangos ['HH:MM','HH:MM']. Si un día no aparece
+// (o su función de horario decide que está cerrado), no se ofrecen horas ese día.
+
+const CASA_MATRIZ_HORARIO = {
+  1: [['13:00','18:00']], // lunes
+  2: [['10:30','18:00']], // martes
+  3: [['10:30','18:00']], // miércoles (idem martes)
+  4: [['10:30','18:00']], // jueves (idem martes)
+  5: [['10:30','13:00']]  // viernes
+  // sábado: bloqueado (ver obtenerRangosHorario) · domingo: cerrado
+};
+// Sábados de Casa Matriz bloqueados hasta esta fecha. Por ahora se dejan
+// cerrados indefinidamente después de esta fecha también, porque aún no se
+// definió un horario de sábado para Casa Matriz — cuando se defina, agrega
+// una entrada 6: [['HH:MM','HH:MM']] a CASA_MATRIZ_HORARIO y ajusta
+// obtenerRangosHorario() para usarla a partir de esta fecha.
+const CASA_MATRIZ_SABADO_BLOQUEADO_HASTA = new Date('2027-01-01T00:00:00');
+
+const APUMANQUE_HORARIO = {
+  0: [['11:00','19:00']], // domingo
+  1: [['11:00','19:00']], // lunes
+  2: [['11:00','19:00']], // martes
+  3: [['11:00','19:00']], // miércoles
+  4: [['11:00','19:00']], // jueves
+  5: [['11:00','19:00']], // viernes
+  6: [['11:00','19:00']]  // sábado
+  // TODO: horario de colación por definir. Cuando se defina, reemplaza el
+  // rango de cada día por dos rangos que la excluyan, ej:
+  // 1: [['11:00','14:00'], ['15:00','19:00']]
+};
+
+const GALERIA_EDWARDS_HORARIO = {
+  1: [['10:00','17:00']], // lunes
+  2: [['10:00','17:00']], // martes
+  3: [['10:00','17:00']], // miércoles
+  4: [['10:00','17:00']], // jueves
+  5: [['10:00','17:00']], // viernes
+  6: [['10:00','13:00']]  // sábado
+  // domingo: cerrado
+};
+
+// Horario genérico de respaldo para cualquier sucursal que aún no tenga
+// horario propio configurado arriba (mantiene el comportamiento anterior).
+const HORARIO_GENERICO_DEFECTO = [['09:00','20:00']];
+
+// Quita acentos y pasa a minúsculas para poder comparar nombres de sucursal
+// sin depender de mayúsculas/tildes exactas que vengan del backend.
+function normalizarTexto(s){
+  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+}
+
+function identificarSucursal(sucursal){
+  const n = normalizarTexto(sucursal);
+  if(!n) return null;
+  if(n.includes('matriz')) return 'casa_matriz';
+  if(n.includes('apumanque')) return 'apumanque';
+  if(n.includes('agustin') || n.includes('edwards') || n.includes('galeria')) return 'galeria_edwards';
+  return null;
+}
+
+// Devuelve los rangos horarios [['HH:MM','HH:MM'], ...] disponibles para una
+// sucursal en una fecha (string 'YYYY-MM-DD'), o null si ese día está cerrado.
+function obtenerRangosHorario(sucursal, fechaStr){
+  if(!sucursal || !fechaStr) return null;
+  const fecha = new Date(fechaStr + 'T00:00:00');
+  if(isNaN(fecha.getTime())) return null;
+  const dia = fecha.getDay();
+  const key = identificarSucursal(sucursal);
+
+  if(key === 'casa_matriz'){
+    if(dia === 0) return null; // domingo cerrado
+    if(dia === 6) return null; // sábado bloqueado (ver CASA_MATRIZ_SABADO_BLOQUEADO_HASTA)
+    return CASA_MATRIZ_HORARIO[dia] || null;
+  }
+  if(key === 'apumanque'){
+    return APUMANQUE_HORARIO[dia] || null;
+  }
+  if(key === 'galeria_edwards'){
+    if(dia === 0) return null; // domingo cerrado
+    return GALERIA_EDWARDS_HORARIO[dia] || null;
+  }
+  // Sucursal aún no configurada arriba: usar horario genérico de respaldo.
+  return HORARIO_GENERICO_DEFECTO;
+}
+
+function generarOpcionesHora(sucursal, fechaStr){
+  if(!sucursal || !fechaStr){
+    return '<option value="">Selecciona sucursal y fecha primero</option>';
+  }
+  const rangos = obtenerRangosHorario(sucursal, fechaStr);
+  if(!rangos || !rangos.length){
+    return '<option value="">Sucursal cerrada este día</option>';
+  }
+  let html = '<option value="">Selecciona una hora</option>';
+  rangos.forEach(([inicio, fin])=>{
+    const [hIni, mIni] = inicio.split(':').map(Number);
+    const [hFin, mFin] = fin.split(':').map(Number);
+    const totalIni = hIni * 60 + mIni;
+    const totalFin = hFin * 60 + mFin;
+    for(let t = totalIni; t <= totalFin; t += INTERVALO_MINUTOS){
+      const h = Math.floor(t / 60), m = t % 60;
       const value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
       const ampm = h < 12 ? 'a.m.' : 'p.m.';
       let h12 = h % 12; if(h12 === 0) h12 = 12;
       const mm = String(m).padStart(2,'0');
       html += `<option value="${value}">${h12}:${mm} ${ampm}</option>`;
     }
-  }
+  });
   return html;
 }
 
@@ -574,6 +672,14 @@ function loadTeamAndStatuses(){
 }
 
 // ---- Nuevo contacto ----
+function actualizarHorasNuevo(){
+  const suc = document.getElementById('f_cita_sucursal').value;
+  const fecha = document.getElementById('f_cita_fecha').value;
+  document.getElementById('f_cita_hora').innerHTML = generarOpcionesHora(suc, fecha);
+}
+document.getElementById('f_cita_sucursal').addEventListener('change', actualizarHorasNuevo);
+document.getElementById('f_cita_fecha').addEventListener('change', actualizarHorasNuevo);
+
 document.getElementById('formNuevo').addEventListener('submit', e=>{
   e.preventDefault();
   const btnGuardar = e.target.querySelector('button[type="submit"]');
@@ -615,6 +721,7 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
   }).then(contactoCreado=>{
     if(!contactoCreado) return;
     document.getElementById('formNuevo').reset();
+    actualizarHorasNuevo();
     closeOverlay('overlayNuevo');
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
     document.querySelector('.nav-btn[data-tab="lista"]').classList.add('active');
@@ -714,16 +821,25 @@ function openDetail(id){
 
     <div class="section-label">Llamada</div>
     ${citaBox}
-    <div class="field" style="margin-top:${c['Fecha Cita']?'14px':'0'}"><label>Fecha</label><input type="date" id="det_fecha"></div>
-    <div class="field" style="margin-top:12px"><label>Hora</label><select id="det_hora"><option value="">Selecciona una hora</option>${generarOpcionesHora()}</select></div>
-    <div class="field" style="margin-top:12px"><label>Sucursal</label>
+    <div class="field" style="margin-top:${c['Fecha Cita']?'14px':'0'}"><label>Sucursal</label>
       <select id="det_sucursal">
         <option value="">Selecciona una sucursal</option>
         ${sucursalOptions}
       </select>
     </div>
+    <div class="field" style="margin-top:12px"><label>Fecha</label><input type="date" id="det_fecha"></div>
+    <div class="field" style="margin-top:12px"><label>Hora</label><select id="det_hora"><option value="">Selecciona sucursal y fecha primero</option></select></div>
     <div style="margin-top:10px;"><button class="btn btn-amber" id="btnAgendar">${c['Fecha Cita']?'Reagendar llamada':'Agendar llamada'}</button></div>
   `;
+
+  function actualizarHorasDetalle(){
+    const suc = document.getElementById('det_sucursal').value;
+    const fecha = document.getElementById('det_fecha').value;
+    document.getElementById('det_hora').innerHTML = generarOpcionesHora(suc, fecha);
+  }
+  document.getElementById('det_sucursal').addEventListener('change', actualizarHorasDetalle);
+  document.getElementById('det_fecha').addEventListener('change', actualizarHorasDetalle);
+  actualizarHorasDetalle();
 
   document.querySelectorAll('#statusGrid .status-opt').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -788,7 +904,7 @@ window.addEventListener('hashchange', ()=>{
   }
 });
 
-document.getElementById('f_cita_hora').innerHTML = '<option value="">Selecciona una hora</option>' + generarOpcionesHora();
+actualizarHorasNuevo();
 renderChips();
 renderCitaChips();
 Promise.all([loadTeamAndStatuses(), loadContacts()]).then(()=>{
