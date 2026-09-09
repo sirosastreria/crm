@@ -280,6 +280,16 @@
         <label>Sucursal</label>
         <select id="f_cita_sucursal"><option value="">No agendar ahora</option></select>
       </div>
+      <div class="field" style="margin-top:12px">
+        <label>Ocasión</label>
+        <select id="f_cita_ocasion">
+          <option value="">Selecciona una ocasión</option>
+          <option value="Novio">Novio</option>
+          <option value="Invitado a boda">Invitado a boda</option>
+          <option value="Graduados">Graduados</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
       <div class="field" style="margin-top:12px"><label>Fecha</label><input type="date" id="f_cita_fecha"></div>
       <div class="field" style="margin-top:12px"><label>Hora</label><select id="f_cita_hora"><option value="">Selecciona una hora</option></select></div>
 
@@ -698,11 +708,12 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
   if(!data.nombre || !data.telefono || !data.correo){ toast('Falta nombre, teléfono o correo'); return; }
 
   const citaSucursal = document.getElementById('f_cita_sucursal').value;
+  const citaOcasion = document.getElementById('f_cita_ocasion').value;
   const citaFecha = document.getElementById('f_cita_fecha').value;
   const citaHora = document.getElementById('f_cita_hora').value;
-  const quiereAgendar = !!(citaSucursal || citaFecha || citaHora);
-  if(quiereAgendar && (!citaSucursal || !citaFecha || !citaHora)){
-    toast('Para agendar la cita, completa sucursal, fecha y hora (o deja los tres vacíos)');
+  const quiereAgendar = !!(citaSucursal || citaOcasion || citaFecha || citaHora);
+  if(quiereAgendar && (!citaSucursal || !citaOcasion || !citaFecha || !citaHora)){
+    toast('Para agendar la cita, completa sucursal, ocasión, fecha y hora (o deja todo vacío)');
     return;
   }
 
@@ -713,7 +724,7 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
       toast('Contacto guardado ✅');
       return true;
     }
-    return apiPost({action:'schedule', id: res.data.id, date: citaFecha, time: citaHora, duration: 30, sucursal: citaSucursal}).then(schedRes=>{
+    return apiPost({action:'schedule', id: res.data.id, date: citaFecha, time: citaHora, duration: 30, sucursal: citaSucursal, ocasion: citaOcasion}).then(schedRes=>{
       if(schedRes.ok) toast('Contacto guardado y cita agendada ✅');
       else toast('Contacto guardado, pero la cita no se pudo agendar: ' + schedRes.error);
       return true; // el contacto sí se creó, aunque falle el agendamiento
@@ -797,6 +808,7 @@ function openDetail(id){
          <div class="info-line"><span>Fecha</span><span>${escapeHtml(c['Fecha Cita'])}</span></div>
          <div class="info-line"><span>Hora</span><span>${escapeHtml(c['Hora Cita'])}</span></div>
          <div class="info-line"><span>Sucursal</span><span>${escapeHtml(c['Sucursal']||'—')}</span></div>
+         <div class="info-line"><span>Ocasión</span><span>${escapeHtml(c['Ocasión']||'—')}</span></div>
          <div style="margin-top:10px;"><button class="btn btn-outline" id="btnCancelarCita">Cancelar cita</button></div>
        </div>`
     : '';
@@ -825,6 +837,16 @@ function openDetail(id){
       <select id="det_sucursal">
         <option value="">Selecciona una sucursal</option>
         ${sucursalOptions}
+      </select>
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label>Ocasión</label>
+      <select id="det_ocasion">
+        <option value="">Selecciona una ocasión</option>
+        <option value="Novio" ${c['Ocasión']==='Novio'?'selected':''}>Novio</option>
+        <option value="Invitado a boda" ${c['Ocasión']==='Invitado a boda'?'selected':''}>Invitado a boda</option>
+        <option value="Graduados" ${c['Ocasión']==='Graduados'?'selected':''}>Graduados</option>
+        <option value="Otro" ${c['Ocasión']==='Otro'?'selected':''}>Otro</option>
       </select>
     </div>
     <div class="field" style="margin-top:12px"><label>Fecha</label><input type="date" id="det_fecha"></div>
@@ -862,9 +884,11 @@ function openDetail(id){
     const date = document.getElementById('det_fecha').value;
     const time = document.getElementById('det_hora').value;
     const sucursal = document.getElementById('det_sucursal').value;
+    const ocasion = document.getElementById('det_ocasion').value;
     if(!date || !time){ toast('Elige fecha y hora'); return; }
     if(!sucursal){ toast('Elige una sucursal'); return; }
-    apiPost({action:'schedule', id, date, time, duration:30, sucursal}).then(res=>{
+    if(!ocasion){ toast('Elige una ocasión'); return; }
+    apiPost({action:'schedule', id, date, time, duration:30, sucursal, ocasion}).then(res=>{
       if(res.ok){
         toast(res.data.invitoCorreo ? 'Llamada agendada e invitación enviada ✅' : 'Llamada agendada ✅ (sin correo para invitar)');
         loadContacts().then(()=>openDetail(id));
