@@ -431,6 +431,17 @@ const GALERIA_EDWARDS_HORARIO = {
 // horario propio configurado arriba (mantiene el comportamiento anterior).
 const HORARIO_GENERICO_DEFECTO = [['09:00','20:00']];
 
+// Fechas feriadas en que NINGUNA sucursal atiende citas (formato 'YYYY-MM-DD').
+// Agrega aquí cualquier otro feriado que deba bloquear el agendamiento.
+const FERIADOS_BLOQUEADOS = [
+  '2026-09-18', // Fiestas Patrias
+  '2026-09-19'  // Fiestas Patrias / Glorias del Ejército
+];
+
+function esFeriadoBloqueado(fechaStr){
+  return FERIADOS_BLOQUEADOS.includes(fechaStr);
+}
+
 // Quita acentos y pasa a minúsculas para poder comparar nombres de sucursal
 // sin depender de mayúsculas/tildes exactas que vengan del backend.
 function normalizarTexto(s){
@@ -466,6 +477,7 @@ function identificarSucursal(sucursal){
 // sucursal en una fecha (string 'YYYY-MM-DD'), o null si ese día está cerrado.
 function obtenerRangosHorario(sucursal, fechaStr){
   if(!sucursal || !fechaStr) return null;
+  if(esFeriadoBloqueado(fechaStr)) return null;   // ← nueva línea: feriados bloqueados
   const fecha = new Date(fechaStr + 'T00:00:00');
   if(isNaN(fecha.getTime())) return null;
   const dia = fecha.getDay();
