@@ -223,6 +223,7 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-IUnnJN1BHCT1
 /* ============================================================== */
 
 // Bloques de cita cada 30 minutos para todas las sucursales.
+// (Debe coincidir con BLOQUE_MINUTOS del Apps Script.)
 const INTERVALO_MINUTOS = 30; // 30 = cada media hora, 60 = cada hora
 
 // ===== Horarios de atención por sucursal =====
@@ -289,7 +290,7 @@ function esFeriadoBloqueado(fechaStr){
 // Quita acentos y pasa a minúsculas para poder comparar nombres de sucursal
 // sin depender de mayúsculas/tildes exactas que vengan del backend.
 function normalizarTexto(s){
-  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 }
 
 // Da la fecha y hora actuales en la zona horaria del negocio (America/Santiago),
@@ -321,7 +322,7 @@ function identificarSucursal(sucursal){
 // sucursal en una fecha (string 'YYYY-MM-DD'), o null si ese día está cerrado.
 function obtenerRangosHorario(sucursal, fechaStr){
   if(!sucursal || !fechaStr) return null;
-  if(esFeriadoBloqueado(fechaStr)) return null;   // ← nueva línea: feriados bloqueados
+  if(esFeriadoBloqueado(fechaStr)) return null;
   const fecha = new Date(fechaStr + 'T00:00:00');
   if(isNaN(fecha.getTime())) return null;
   const dia = fecha.getDay();
@@ -379,11 +380,6 @@ function generarOpcionesHora(sucursal, fechaStr){
 }
 
 // ===== Mini calendario propio para elegir fecha =====
-// Reemplaza el <input type="date"> nativo (que no permite deshabilitar días de la
-// semana específicos) por un calendario propio: los días sin ningún horario
-// disponible para la sucursal elegida (ya sea porque ya pasaron o porque esa
-// sucursal no atiende/no tiene cupo ese día) aparecen apagados y no se pueden
-// elegir, en vez de dejar seleccionarlos y recién avisar después.
 const DIAS_SEMANA_ES = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const MESES_LARGO_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -474,8 +470,6 @@ function crearSelectorFecha(inputEl, obtenerSucursalActual){
 
   return {
     refrescar: render,
-    // Si la fecha ya elegida deja de tener horario disponible (por ejemplo, cambiaron
-    // de sucursal), la limpia para que no quede seleccionada una fecha inválida.
     limpiarSiInvalida(){
       const sucursal = obtenerSucursalActual();
       if(inputEl.value && (!sucursal || !obtenerRangosHorario(sucursal, inputEl.value) || inputEl.value < ahora.fecha)){
@@ -533,6 +527,9 @@ function showCard(id){
 
 let SUCURSALES = [];
 let foundContactId = null;
+// Si un contacto nuevo ya se creó pero la cita falló (ej. hora tomada), se guarda
+// su ID aquí para no crear un registro duplicado al reintentar.
+let nuevoContactId = null;
 
 apiGet({action:'team'}).then(res=>{
   if(res.ok){
@@ -543,12 +540,43 @@ apiGet({action:'team'}).then(res=>{
   }
 });
 
-// ---- Horas dinámicas según sucursal + fecha (contacto existente) ----
-function actualizarHorasExistente(){
-  const suc = document.getElementById('x_sucursal').value;
-  const fecha = document.getElementById('x_fecha').value;
-  document.getElementById('x_hora').innerHTML = generarOpcionesHora(suc, fecha);
+// ===== NUEVO: horas según horario + disponibilidad real en Google Calendar =====
+// 1) Arma las horas según el horario de la sucursal (como antes).
+// 2) Le pregunta al Apps Script qué horas ya están ocupadas en el Calendar
+//    para esa sucursal y ese día, y las quita de la lista.
+const tokensHoras = { x: 0, n: 0 };
+function cargarHorasDisponibles(pref){
+  const suc = document.getElementById(pref + '_sucursal').value;
+  const fecha = document.getElementById(pref + '_fecha').value;
+  const sel = document.getElementById(pref + '_hora');
+  const token = ++tokensHoras[pref]; // para ignorar respuestas viejas si cambian rápido de fecha
+
+  sel.innerHTML = generarOpcionesHora(suc, fecha);
+  if(!suc || !fecha || sel.options.length <= 1) return; // no hay horas que revisar
+
+  sel.disabled = true;
+  sel.options[0].textContent = 'Revisando disponibilidad...';
+
+  apiGet({action:'busySlots', sucursal: suc, date: fecha}).then(res=>{
+    if(token !== tokensHoras[pref]) return;
+    if(!res.ok) throw new Error(res.error || 'error');
+    const ocupadas = new Set((res.data && res.data.ocupadas) || []);
+    Array.from(sel.options).forEach(o=>{
+      if(o.value && ocupadas.has(o.value)) o.remove();
+    });
+    sel.options[0].textContent = sel.options.length > 1
+      ? 'Selecciona una hora'
+      : 'No quedan horas disponibles ese día';
+  }).catch(()=>{
+    if(token !== tokensHoras[pref]) return;
+    sel.innerHTML = '<option value="">No se pudo revisar la disponibilidad. Cambia la fecha o intenta de nuevo.</option>';
+  }).finally(()=>{
+    if(token === tokensHoras[pref]) sel.disabled = false;
+  });
 }
+
+// ---- Horas dinámicas según sucursal + fecha (contacto existente) ----
+function actualizarHorasExistente(){ cargarHorasDisponibles('x'); }
 const selectorXFecha = crearSelectorFecha(document.getElementById('x_fecha'), () => document.getElementById('x_sucursal').value);
 document.getElementById('x_sucursal').addEventListener('change', () => {
   selectorXFecha.limpiarSiInvalida();
@@ -558,11 +586,7 @@ document.getElementById('x_sucursal').addEventListener('change', () => {
 document.getElementById('x_fecha').addEventListener('change', actualizarHorasExistente);
 
 // ---- Horas dinámicas según sucursal + fecha (contacto nuevo) ----
-function actualizarHorasNuevo(){
-  const suc = document.getElementById('n_sucursal').value;
-  const fecha = document.getElementById('n_fecha').value;
-  document.getElementById('n_hora').innerHTML = generarOpcionesHora(suc, fecha);
-}
+function actualizarHorasNuevo(){ cargarHorasDisponibles('n'); }
 const selectorNFecha = crearSelectorFecha(document.getElementById('n_fecha'), () => document.getElementById('n_sucursal').value);
 document.getElementById('n_sucursal').addEventListener('change', () => {
   selectorNFecha.limpiarSiInvalida();
@@ -582,10 +606,15 @@ document.getElementById('formTelefono').addEventListener('submit', e=>{
     if(!res.ok){ showError('No se pudo buscar tu registro: ' + (res.error||'')); return; }
     if(res.data && res.data.found){
       foundContactId = res.data.id;
-      document.getElementById('helloBox').innerHTML = `¡Hola, <strong>${res.data.nombre}</strong>! Ya tenemos tu registro.`;
+      const box = document.getElementById('helloBox');
+      box.textContent = '';
+      box.append('¡Hola, ');
+      const strong = document.createElement('strong');
+      strong.textContent = res.data.nombre;
+      box.append(strong, '! Ya tenemos tu registro.');
       showCard('cardEncontrado');
     } else {
-      document.getElementById('n_telHidden') // no-op, el teléfono se reusa desde p_tel
+      nuevoContactId = null;
       showCard('cardNuevo');
     }
   });
@@ -597,6 +626,7 @@ document.getElementById('btnNoSoyYo').addEventListener('click', ()=>{
   showCard('cardTelefono');
 });
 document.getElementById('btnCambiarTel').addEventListener('click', ()=>{
+  nuevoContactId = null;
   document.getElementById('p_tel').value = '+56 ';
   showCard('cardTelefono');
 });
@@ -614,12 +644,15 @@ document.getElementById('formAgendarExistente').addEventListener('submit', e=>{
 
   const btn = document.getElementById('btnAgendarExistente');
   btn.disabled = true;
-  apiPost({action:'schedule', id: foundContactId, date: fecha, time: hora, duration: 30, sucursal, ocasion}).then(res=>{
+  apiPost({action:'schedule', id: foundContactId, date: fecha, time: hora, duration: INTERVALO_MINUTOS, sucursal, ocasion}).then(res=>{
     if(res.ok){
       mostrarConfirmacion(sucursal, ocasion, fecha, hora);
     } else {
       showError('No se pudo agendar: ' + res.error);
+      actualizarHorasExistente(); // refresca la lista para quitar la hora que ya se tomó
     }
+  }).catch(()=>{
+    showError('No se pudo agendar por un problema de conexión. Intenta de nuevo.');
   }).finally(()=>{ btn.disabled = false; });
 });
 
@@ -650,16 +683,26 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
 
   const btn = document.getElementById('btnAgendarNuevo');
   btn.disabled = true;
-  apiPost({action:'add', data}).then(res=>{
+
+  // Si el registro ya se creó en un intento anterior, no se vuelve a crear.
+  const crearRegistro = nuevoContactId
+    ? Promise.resolve({ok:true, data:{id: nuevoContactId}})
+    : apiPost({action:'add', data});
+
+  crearRegistro.then(res=>{
     if(!res.ok){ showError('No se pudo crear tu registro: ' + res.error); return null; }
-    return apiPost({action:'schedule', id: res.data.id, date: fecha, time: hora, duration: 30, sucursal, ocasion});
+    nuevoContactId = res.data.id;
+    return apiPost({action:'schedule', id: nuevoContactId, date: fecha, time: hora, duration: INTERVALO_MINUTOS, sucursal, ocasion});
   }).then(schedRes=>{
     if(schedRes === null) return;
     if(schedRes.ok){
       mostrarConfirmacion(sucursal, ocasion, fecha, hora);
     } else {
-      showError('Tu registro se creó, pero no se pudo agendar la cita: ' + schedRes.error);
+      showError('Tu registro quedó guardado, pero no se pudo agendar la cita: ' + schedRes.error);
+      actualizarHorasNuevo(); // refresca la lista para quitar la hora que ya se tomó
     }
+  }).catch(()=>{
+    showError('No se pudo completar por un problema de conexión. Intenta de nuevo.');
   }).finally(()=>{ btn.disabled = false; });
 });
 
