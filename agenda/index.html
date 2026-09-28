@@ -225,6 +225,8 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-IUnnJN1BHCT1
 // Bloques de cita cada 30 minutos para todas las sucursales.
 // (Debe coincidir con BLOQUE_MINUTOS del Apps Script.)
 const INTERVALO_MINUTOS = 30; // 30 = cada media hora, 60 = cada hora
+// Duración de cada prueba de traje (debe coincidir con DURACION_CITA_MINUTOS del Apps Script).
+const DURACION_CITA_MINUTOS = 60;
 
 // ===== Horarios de atención por sucursal =====
 // Cada horario está definido por día de la semana según Date.getDay():
@@ -644,7 +646,7 @@ document.getElementById('formAgendarExistente').addEventListener('submit', e=>{
 
   const btn = document.getElementById('btnAgendarExistente');
   btn.disabled = true;
-  apiPost({action:'schedule', id: foundContactId, date: fecha, time: hora, duration: INTERVALO_MINUTOS, sucursal, ocasion}).then(res=>{
+  apiPost({action:'schedule', id: foundContactId, date: fecha, time: hora, duration: DURACION_CITA_MINUTOS, sucursal, ocasion}).then(res=>{
     if(res.ok){
       mostrarConfirmacion(sucursal, ocasion, fecha, hora);
     } else {
@@ -692,7 +694,7 @@ document.getElementById('formNuevo').addEventListener('submit', e=>{
   crearRegistro.then(res=>{
     if(!res.ok){ showError('No se pudo crear tu registro: ' + res.error); return null; }
     nuevoContactId = res.data.id;
-    return apiPost({action:'schedule', id: nuevoContactId, date: fecha, time: hora, duration: INTERVALO_MINUTOS, sucursal, ocasion});
+    return apiPost({action:'schedule', id: nuevoContactId, date: fecha, time: hora, duration: DURACION_CITA_MINUTOS, sucursal, ocasion});
   }).then(schedRes=>{
     if(schedRes === null) return;
     if(schedRes.ok){
